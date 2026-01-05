@@ -1,0 +1,374 @@
+{
+  "name": "MoA_MEL_Audit_Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mel-audit",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": "mel-audit-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validation des paramètres d'entrée\nconst input = $input.first().json;\n\nconst melPath = input.mel_path || input.body?.mel_path;\nconst mmelPath = input.mmel_path || input.body?.mmel_path;\nconst apiKey = input.api_key || input.body?.api_key || $env.MISTRAL_API_KEY || '';\n\nif (!melPath || !mmelPath) {\n  throw new Error('mel_path and mmel_path are required');\n}\n\nreturn {\n  json: {\n    mel_path: melPath,\n    mmel_path: mmelPath,\n    api_key: apiKey,\n    run_id: new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14),\n    started_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MOA_MEL_API_URL || 'http://localhost:8080' }}/webhook/n8n/parse",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "doc_type",
+              "value": "MEL"
+            },
+            {
+              "name": "file_path",
+              "value": "={{ $json.mel_path }}"
+            },
+            {
+              "name": "api_key",
+              "value": "={{ $json.api_key }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "parse-mel",
+      "name": "Parse MEL Document",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [690, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MOA_MEL_API_URL || 'http://localhost:8080' }}/webhook/n8n/parse",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "doc_type",
+              "value": "MMEL"
+            },
+            {
+              "name": "file_path",
+              "value": "={{ $('Validate Input').item.json.mmel_path }}"
+            },
+            {
+              "name": "api_key",
+              "value": "={{ $('Validate Input').item.json.api_key }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "parse-mmel",
+      "name": "Parse MMEL Document",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [690, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Consolider les résultats du parsing\nconst melResult = $('Parse MEL Document').first().json;\nconst mmelResult = $('Parse MMEL Document').first().json;\nconst config = $('Validate Input').first().json;\n\nreturn {\n  json: {\n    run_id: config.run_id,\n    mel_items: melResult.items || [],\n    mmel_items: mmelResult.items || [],\n    mel_count: melResult.items_count || melResult.items?.length || 0,\n    mmel_count: mmelResult.items_count || mmelResult.items?.length || 0,\n    api_key: config.api_key,\n    parsing_completed_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "merge-parsing",
+      "name": "Merge Parsing Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [910, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Indexation et matching MEL/MMEL\nconst data = $input.first().json;\nconst melItems = data.mel_items;\nconst mmelItems = data.mmel_items;\n\n// Créer un index MMEL\nconst mmelIndex = {};\nfor (const item of mmelItems) {\n  const key = `${item.ata_chapter}|${item.item_number}`;\n  mmelIndex[key] = item;\n}\n\n// Matcher chaque item MEL\nconst matches = [];\nconst matchedMmelKeys = new Set();\n\nfor (const melItem of melItems) {\n  const key = `${melItem.ata_chapter}|${melItem.item_number}`;\n  const mmelItem = mmelIndex[key];\n  \n  if (mmelItem) {\n    matches.push({\n      mel_item_id: key,\n      mmel_item_id: key,\n      exact_match: true,\n      match_type: 'exact',\n      match_confidence: 'high'\n    });\n    matchedMmelKeys.add(key);\n  } else {\n    matches.push({\n      mel_item_id: key,\n      mmel_item_id: null,\n      exact_match: false,\n      match_type: 'none',\n      match_confidence: 'no_match',\n      requires_hitl_review: true,\n      hitl_reason: 'No matching MMEL item found'\n    });\n  }\n}\n\n// Items MMEL non matchés\nconst unmatchedMmel = Object.keys(mmelIndex).filter(k => !matchedMmelKeys.has(k));\n\nreturn {\n  json: {\n    ...data,\n    matches: matches,\n    matched_count: matches.filter(m => m.exact_match).length,\n    unmatched_mel: matches.filter(m => !m.exact_match).length,\n    unmatched_mmel: unmatchedMmel.length,\n    unmatched_mmel_keys: unmatchedMmel,\n    indexing_completed_at: new Date().toISOString()\n  }\n};"
+      },
+      "id": "indexing",
+      "name": "Index & Match",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Comparaison MEL/MMEL et génération des verdicts\nconst data = $input.first().json;\nconst melItems = data.mel_items;\nconst mmelItems = data.mmel_items;\nconst matches = data.matches;\n\n// Index MMEL\nconst mmelIndex = {};\nfor (const item of mmelItems) {\n  const key = `${item.ata_chapter}|${item.item_number}`;\n  mmelIndex[key] = item;\n}\n\n// Index MEL\nconst melIndex = {};\nfor (const item of melItems) {\n  const key = `${item.ata_chapter}|${item.item_number}`;\n  melIndex[key] = item;\n}\n\n// Hiérarchie des catégories (1 = plus restrictif)\nconst categoryRank = { 'A': 1, 'B': 2, 'C': 3, 'D': 4, '-': 5, '': 5 };\n\nconst comparisons = [];\nconst stats = {\n  compliant: 0,\n  more_restrictive: 0,\n  less_restrictive: 0,\n  missing_in_mel: 0,\n  missing_in_mmel: 0,\n  category_mismatch: 0,\n  critical: 0,\n  high: 0,\n  medium: 0,\n  warning: 0,\n  info: 0,\n  hitl_required: 0\n};\n\n// Comparer les items matchés\nfor (const match of matches) {\n  const melItem = melIndex[match.mel_item_id];\n  const mmelItem = mmelIndex[match.mmel_item_id];\n  \n  if (!mmelItem) {\n    // Item MEL sans équivalent MMEL\n    comparisons.push({\n      mel_item_id: match.mel_item_id,\n      mmel_item_id: null,\n      ata_chapter: melItem?.ata_chapter || '',\n      item_number: melItem?.item_number || '',\n      item_description: melItem?.item_description || '',\n      verdict: 'MISSING_IN_MMEL',\n      severity: 'info',\n      mel_category: melItem?.category || '',\n      mmel_category: '',\n      mel_remarks: melItem?.remarks || '',\n      mmel_remarks: ''\n    });\n    stats.missing_in_mmel++;\n    stats.info++;\n    continue;\n  }\n  \n  // Comparer les catégories\n  const melCat = (melItem?.category || '').toUpperCase();\n  const mmelCat = (mmelItem?.category || '').toUpperCase();\n  const melRank = categoryRank[melCat] || 5;\n  const mmelRank = categoryRank[mmelCat] || 5;\n  \n  let verdict, severity;\n  let requiresHitl = false;\n  let hitlReason = '';\n  \n  if (melRank === mmelRank) {\n    verdict = 'COMPLIANT';\n    severity = 'info';\n    stats.compliant++;\n    stats.info++;\n  } else if (melRank < mmelRank) {\n    verdict = 'MORE_RESTRICTIVE';\n    severity = 'info';\n    stats.more_restrictive++;\n    stats.info++;\n  } else {\n    verdict = 'LESS_RESTRICTIVE';\n    severity = 'critical';\n    stats.less_restrictive++;\n    stats.critical++;\n    requiresHitl = true;\n    hitlReason = `CRITICAL: MEL category ${melCat} is less restrictive than MMEL ${mmelCat}`;\n  }\n  \n  if (requiresHitl) stats.hitl_required++;\n  \n  comparisons.push({\n    mel_item_id: match.mel_item_id,\n    mmel_item_id: match.mmel_item_id,\n    ata_chapter: melItem?.ata_chapter || '',\n    item_number: melItem?.item_number || '',\n    item_description: melItem?.item_description || '',\n    verdict: verdict,\n    severity: severity,\n    mel_category: melCat,\n    mmel_category: mmelCat,\n    mel_remarks: melItem?.remarks || '',\n    mmel_remarks: mmelItem?.remarks || '',\n    requires_hitl_review: requiresHitl,\n    hitl_reason: hitlReason\n  });\n}\n\n// Items MMEL manquants dans MEL\nfor (const key of data.unmatched_mmel_keys || []) {\n  const mmelItem = mmelIndex[key];\n  comparisons.push({\n    mel_item_id: '',\n    mmel_item_id: key,\n    ata_chapter: mmelItem?.ata_chapter || '',\n    item_number: mmelItem?.item_number || '',\n    item_description: mmelItem?.item_description || '',\n    verdict: 'MISSING_IN_MEL',\n    severity: 'warning',\n    mel_category: '',\n    mmel_category: mmelItem?.category || '',\n    mel_remarks: '',\n    mmel_remarks: mmelItem?.remarks || '',\n    requires_hitl_review: true,\n    hitl_reason: 'MMEL item not found in MEL - verify if equipment installed'\n  });\n  stats.missing_in_mel++;\n  stats.warning++;\n  stats.hitl_required++;\n}\n\nconst total = comparisons.length;\nconst compliantTotal = stats.compliant + stats.more_restrictive;\nconst complianceRate = total > 0 ? Math.round((compliantTotal / total) * 10000) / 100 : 0;\n\nreturn {\n  json: {\n    run_id: data.run_id,\n    audit_timestamp: new Date().toISOString(),\n    summary: {\n      total: total,\n      compliant: stats.compliant,\n      more_restrictive: stats.more_restrictive,\n      less_restrictive: stats.less_restrictive,\n      missing_in_mel: stats.missing_in_mel,\n      missing_in_mmel: stats.missing_in_mmel,\n      hitl_required: stats.hitl_required,\n      compliance_rate: complianceRate\n    },\n    severity_breakdown: {\n      critical: stats.critical,\n      high: stats.high,\n      medium: stats.medium,\n      warning: stats.warning,\n      info: stats.info\n    },\n    comparisons: comparisons\n  }\n};"
+      },
+      "id": "comparison",
+      "name": "Compare & Audit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1350, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Générer le log HITL\nconst data = $input.first().json;\nconst hitlItems = data.comparisons.filter(c => c.requires_hitl_review);\n\nconst hitlLog = {\n  generated_at: new Date().toISOString(),\n  run_id: data.run_id,\n  total_items_for_review: hitlItems.length,\n  by_severity: {\n    critical: hitlItems.filter(i => i.severity === 'critical').length,\n    high: hitlItems.filter(i => i.severity === 'high').length,\n    medium: hitlItems.filter(i => i.severity === 'medium').length,\n    warning: hitlItems.filter(i => i.severity === 'warning').length\n  },\n  items: hitlItems.map(item => ({\n    id: `${item.ata_chapter}-${item.item_number}`,\n    verdict: item.verdict,\n    severity: item.severity,\n    sla_hours: item.severity === 'critical' ? 48 : item.severity === 'high' ? 48 : 24,\n    reason: item.hitl_reason,\n    mel_data: {\n      item_id: item.mel_item_id,\n      category: item.mel_category,\n      remarks: item.mel_remarks\n    },\n    mmel_data: {\n      item_id: item.mmel_item_id,\n      category: item.mmel_category,\n      remarks: item.mmel_remarks\n    },\n    validation: {\n      status: 'PENDING',\n      decision: null,\n      validated_by: null,\n      validated_at: null,\n      comments: null\n    }\n  }))\n};\n\nreturn [\n  { json: data },\n  { json: { hitl_log: hitlLog } }\n];"
+      },
+      "id": "generate-hitl",
+      "name": "Generate HITL Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1570, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "critical-check",
+              "leftValue": "={{ $json.summary.less_restrictive }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-critical",
+      "name": "Critical Findings?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1790, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Générer une alerte pour les écarts critiques\nconst data = $input.first().json;\nconst criticalItems = data.comparisons.filter(c => c.severity === 'critical');\n\nreturn {\n  json: {\n    alert_type: 'CRITICAL_GAP_DETECTED',\n    run_id: data.run_id,\n    timestamp: new Date().toISOString(),\n    message: `${criticalItems.length} écart(s) critique(s) détecté(s) - Action immédiate requise`,\n    sla_deadline: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),\n    items: criticalItems.map(i => ({\n      ata: i.ata_chapter,\n      item: i.item_number,\n      description: i.item_description,\n      issue: i.hitl_reason\n    }))\n  }\n};"
+      },
+      "id": "critical-alert",
+      "name": "Generate Critical Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2010, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Préparer la réponse finale\nconst auditData = $('Generate HITL Log').first().json;\nconst hitlData = $('Generate HITL Log').all()[1]?.json || {};\n\nconst response = {\n  status: 'completed',\n  run_id: auditData.run_id,\n  audit_timestamp: auditData.audit_timestamp,\n  summary: auditData.summary,\n  severity_breakdown: auditData.severity_breakdown,\n  hitl_items_count: hitlData.hitl_log?.total_items_for_review || 0,\n  recommendations: [],\n  output_available: true\n};\n\n// Ajouter des recommandations\nif (auditData.summary.less_restrictive > 0) {\n  response.recommendations.push({\n    priority: 'HIGH',\n    action: `Review ${auditData.summary.less_restrictive} items where MEL is less restrictive than MMEL`,\n    deadline: '48 hours'\n  });\n}\n\nif (auditData.summary.missing_in_mel > 0) {\n  response.recommendations.push({\n    priority: 'MEDIUM',\n    action: `Verify ${auditData.summary.missing_in_mel} MMEL items not found in MEL`,\n    deadline: '1 week'\n  });\n}\n\nreturn { json: response };"
+      },
+      "id": "prepare-response",
+      "name": "Prepare Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2010, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          }
+        }
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2230, 300]
+    },
+    {
+      "parameters": {
+        "fileName": "=/outputs/audit_result_{{ $('Validate Input').item.json.run_id }}.json",
+        "options": {}
+      },
+      "id": "save-audit",
+      "name": "Save Audit Result",
+      "type": "n8n-nodes-base.writeJsonFile",
+      "typeVersion": 1,
+      "position": [2010, 500]
+    },
+    {
+      "parameters": {
+        "fileName": "=/outputs/hitl_audit_{{ $('Validate Input').item.json.run_id }}.json",
+        "options": {}
+      },
+      "id": "save-hitl",
+      "name": "Save HITL Log",
+      "type": "n8n-nodes-base.writeJsonFile",
+      "typeVersion": 1,
+      "position": [2230, 500]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Parse MEL Document",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Parse MMEL Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse MEL Document": {
+      "main": [
+        [
+          {
+            "node": "Merge Parsing Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse MMEL Document": {
+      "main": [
+        [
+          {
+            "node": "Merge Parsing Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Parsing Results": {
+      "main": [
+        [
+          {
+            "node": "Index & Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Index & Match": {
+      "main": [
+        [
+          {
+            "node": "Compare & Audit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compare & Audit": {
+      "main": [
+        [
+          {
+            "node": "Generate HITL Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate HITL Log": {
+      "main": [
+        [
+          {
+            "node": "Critical Findings?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Save Audit Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Critical Findings?": {
+      "main": [
+        [
+          {
+            "node": "Generate Critical Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Prepare Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Save HITL Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "MoA_MEL",
+      "createdAt": "2026-01-02T00:00:00.000Z"
+    },
+    {
+      "name": "Aviation",
+      "createdAt": "2026-01-02T00:00:00.000Z"
+    }
+  ],
+  "triggerCount": 0,
+  "updatedAt": "2026-01-02T14:30:00.000Z",
+  "versionId": "1.0.0"
+}

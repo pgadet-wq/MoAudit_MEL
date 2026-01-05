@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoA_MEL - Audit MEL/MMEL Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #e0f2fe 100%);
+            min-height: 100vh;
+            color: #1e293b;
+        }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        
+        header {
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1rem 1.5rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-left { display: flex; align-items: center; gap: 1rem; }
+        .logo {
+            background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+        .header-title h1 { font-size: 1.25rem; font-weight: 700; }
+        .header-title p { font-size: 0.875rem; color: #64748b; }
+        .run-id {
+            font-family: 'JetBrains Mono', monospace;
+            background: #f1f5f9;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            color: #475569;
+        }
+        
+        main {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+        
+        .doc-info {
+            background: white;
+            border-radius: 0.75rem;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid #e2e8f0;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .doc-item { display: flex; align-items: center; gap: 0.5rem; }
+        .doc-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .doc-dot.mel { background: #3b82f6; }
+        .doc-dot.mmel { background: #22c55e; }
+        .doc-label { color: #64748b; font-size: 0.875rem; }
+        .doc-name { font-weight: 500; }
+        .timestamp { color: #64748b; font-size: 0.875rem; }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 1200px) { .summary-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 768px) { .summary-grid { grid-template-columns: repeat(2, 1fr); } }
+        
+        .summary-card {
+            background: white;
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            border: 1px solid #e2e8f0;
+            transition: box-shadow 0.2s;
+        }
+        .summary-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+        .summary-card .label { font-size: 0.875rem; color: #64748b; font-weight: 500; }
+        .summary-card .value { font-size: 2rem; font-weight: 700; margin-top: 0.25rem; }
+        .summary-card .subtitle { font-size: 0.75rem; color: #94a3b8; margin-top: 0.25rem; }
+        
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        @media (max-width: 900px) { .charts-grid { grid-template-columns: 1fr; } }
+        
+        .chart-card {
+            background: white;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            border: 1px solid #e2e8f0;
+        }
+        .chart-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
+        
+        .bar-chart { display: flex; flex-direction: column; gap: 0.75rem; }
+        .bar-item { display: flex; align-items: center; gap: 0.75rem; }
+        .bar-label { width: 100px; font-size: 0.875rem; color: #475569; }
+        .bar-container { flex: 1; height: 24px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
+        .bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; }
+        .bar-value { font-size: 0.75rem; font-weight: 600; color: white; }
+        
+        .donut-container { display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; }
+        .donut-chart { position: relative; width: 180px; height: 180px; }
+        .donut-chart svg { transform: rotate(-90deg); }
+        .donut-center {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+        .donut-center .value { font-size: 1.75rem; font-weight: 700; }
+        .donut-center .label { font-size: 0.75rem; color: #64748b; }
+        .donut-legend { display: flex; flex-direction: column; gap: 0.5rem; }
+        .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
+        .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
+        
+        .filters {
+            background: white;
+            border-radius: 0.75rem;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            border: 1px solid #e2e8f0;
+            flex-wrap: wrap;
+        }
+        .search-box {
+            flex: 1;
+            min-width: 250px;
+            display: flex;
+            align-items: center;
+            background: #f8fafc;
+            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+        }
+        .search-box input {
+            flex: 1;
+            border: none;
+            background: transparent;
+            outline: none;
+            font-size: 0.875rem;
+            margin-left: 0.5rem;
+        }
+        .filter-select {
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid #e2e8f0;
+            background: white;
+            font-size: 0.875rem;
+            cursor: pointer;
+        }
+        .item-count { font-size: 0.875rem; color: #64748b; }
+        
+        .table-container {
+            background: white;
+            border-radius: 0.75rem;
+            border: 1px solid #e2e8f0;
+            overflow: hidden;
+        }
+        table { width: 100%; border-collapse: collapse; }
+        thead { background: #f8fafc; }
+        th {
+            padding: 0.875rem 1rem;
+            text-align: left;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: #475569;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        th.center { text-align: center; }
+        th.mel { color: #3b82f6; }
+        th.mmel { color: #22c55e; }
+        
+        tbody tr.data-row { border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s; }
+        tbody tr.data-row:hover { background: #f8fafc; }
+        tbody tr.data-row.expanded { background: #f8fafc; }
+        td { padding: 0.875rem 1rem; font-size: 0.875rem; }
+        td.center { text-align: center; }
+        td.mono { font-family: 'JetBrains Mono', monospace; font-weight: 500; }
+        
+        .expand-icon { color: #94a3b8; margin-right: 0.5rem; transition: transform 0.2s; display: inline-block; }
+        .expanded .expand-icon { transform: rotate(90deg); }
+        .description { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .category { font-weight: 700; font-size: 1.1rem; }
+        .category.mismatch { color: #dc2626; }
+        
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.625rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            gap: 0.25rem;
+        }
+        .badge-compliant { background: #dcfce7; color: #16a34a; }
+        .badge-more { background: #dbeafe; color: #2563eb; }
+        .badge-less { background: #fee2e2; color: #dc2626; }
+        .badge-missing-mel { background: #ffedd5; color: #ea580c; }
+        .badge-missing-mmel { background: #f3f4f6; color: #6b7280; }
+        .badge-mismatch { background: #ede9fe; color: #7c3aed; }
+        .badge-deviation { background: #cffafe; color: #0891b2; }
+        
+        .severity {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.125rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .severity-critical { background: #fee2e2; color: #dc2626; }
+        .severity-high { background: #ffedd5; color: #ea580c; }
+        .severity-medium { background: #fef3c7; color: #d97706; }
+        .severity-warning { background: #fef9c3; color: #ca8a04; }
+        .severity-info { background: #dcfce7; color: #16a34a; }
+        
+        .expanded-content {
+            padding: 1.5rem;
+            background: #f8fafc;
+            display: none;
+        }
+        .expanded-content.show { display: block; }
+        .expanded-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+        @media (max-width: 768px) { .expanded-grid { grid-template-columns: 1fr; } }
+        .expanded-section h4 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .expanded-section.mel h4 { color: #3b82f6; }
+        .expanded-section.mmel h4 { color: #22c55e; }
+        .expanded-box {
+            background: white;
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        .expanded-box.mel { border: 1px solid #bfdbfe; }
+        .expanded-box.mmel { border: 1px solid #bbf7d0; }
+        .expanded-box .label { font-size: 0.75rem; color: #64748b; }
+        .expanded-box .value { font-weight: 500; margin-top: 0.25rem; }
+        .expanded-box .value.large { font-size: 1.5rem; font-weight: 700; }
+        
+        .alert-box {
+            margin-top: 1rem;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        .alert-box.critical { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
+        .alert-box.warning { background: #fef9c3; color: #ca8a04; border: 1px solid #fde047; }
+        
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+        footer p { margin: 0.25rem 0; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="header-left">
+                <div class="logo">MoA_MEL</div>
+                <div class="header-title">
+                    <h1>Audit MEL/MMEL</h1>
+                    <p>Rapport d'écarts</p>
+                </div>
+            </div>
+            <span class="run-id">Run #20260102_143052</span>
+        </div>
+    </header>
+
+    <main>
+        <div class="doc-info">
+            <div style="display: flex; gap: 3rem; flex-wrap: wrap;">
+                <div class="doc-item">
+                    <div class="doc-dot mel"></div>
+                    <span class="doc-label">MEL:</span>
+                    <span class="doc-name">Sample_Airline_A320_MEL_Rev15.pdf</span>
+                </div>
+                <div class="doc-item">
+                    <div class="doc-dot mmel"></div>
+                    <span class="doc-label">MMEL:</span>
+                    <span class="doc-name">A320_MMEL_Rev42_EASA.pdf</span>
+                </div>
+            </div>
+            <div class="timestamp">🕐 02/01/2026 14:30:52</div>
+        </div>
+
+        <div class="summary-grid" id="summaryCards"></div>
+
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>Distribution des Verdicts</h3>
+                <div class="donut-container">
+                    <div class="donut-chart" id="donutChart"></div>
+                    <div class="donut-legend" id="donutLegend"></div>
+                </div>
+            </div>
+            <div class="chart-card">
+                <h3>Distribution par Sévérité</h3>
+                <div class="bar-chart" id="barChart"></div>
+            </div>
+        </div>
+
+        <div class="filters">
+            <div class="search-box">
+                <span>🔍</span>
+                <input type="text" id="searchInput" placeholder="Rechercher ATA, Item ou Description...">
+            </div>
+            <select class="filter-select" id="severityFilter">
+                <option value="all">Toutes Sévérités</option>
+                <option value="critical">Critique</option>
+                <option value="high">Élevé</option>
+                <option value="medium">Moyen</option>
+                <option value="warning">Attention</option>
+                <option value="info">Info</option>
+            </select>
+            <select class="filter-select" id="verdictFilter">
+                <option value="all">Tous Verdicts</option>
+                <option value="COMPLIANT">Conforme</option>
+                <option value="MORE_RESTRICTIVE">Plus Restrictif</option>
+                <option value="LESS_RESTRICTIVE">Moins Restrictif</option>
+                <option value="MISSING_IN_MEL">Absent MEL</option>
+            </select>
+            <span class="item-count" id="itemCount">12 / 12 items</span>
+        </div>
+
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ATA</th>
+                        <th>Item</th>
+                        <th>Description</th>
+                        <th class="center mel">MEL Cat.</th>
+                        <th class="center mmel">MMEL Cat.</th>
+                        <th>Verdict</th>
+                        <th>Sévérité</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+
+        <footer>
+            <p>MoA_MEL Audit PoC — WingMate™ by OPS Insight</p>
+            <p>Powered by Mistral AI 🇫🇷 • Infrastructure Scaleway 🇪🇺</p>
+        </footer>
+    </main>
+
+    <script>
+        const auditData = {
+            summary: { total: 12, compliant: 5, more_restrictive: 2, less_restrictive: 2, missing_in_mel: 2, other_deviations: 1, hitl_required: 5, compliance_rate: 58.33 },
+            severity_breakdown: { critical: 2, high: 1, medium: 1, warning: 2, info: 6 },
+            comparisons: [
+                { ata_chapter: "24", item_number: "24-10-01", item_description: "Main Battery", verdict: "LESS_RESTRICTIVE", severity: "critical", mel_category: "B", mmel_category: "A", mel_remarks: "(M) Maintenance verification required.", mmel_remarks: "Go item - must be operative for dispatch.", hitl_reason: "CRITICAL: MEL category B is less restrictive than MMEL A" },
+                { ata_chapter: "27", item_number: "27-30-01", item_description: "Aileron Trim System", verdict: "LESS_RESTRICTIVE", severity: "critical", mel_category: "C", mmel_category: "B", mel_remarks: "(O) May be inoperative provided trim is set to neutral.", mmel_remarks: "(O)(M) May be inoperative provided: (a) trim set to neutral, (b) manual reversion verified.", hitl_reason: "CRITICAL: MEL category C is less restrictive than MMEL B" },
+                { ata_chapter: "34", item_number: "34-20-01", item_description: "Weather Radar System", verdict: "CATEGORY_MISMATCH", severity: "high", mel_category: "C", mmel_category: "B", mel_remarks: "(O) May be inoperative for VFR.", mmel_remarks: "(O)(M) May be inoperative for day VFR only.", hitl_reason: "Category deviation requires review" },
+                { ata_chapter: "29", item_number: "29-10-01", item_description: "Hydraulic System Pressure Indicator", verdict: "REMARKS_DEVIATION", severity: "medium", mel_category: "D", mmel_category: "C", mel_remarks: "(O) One may be inoperative.", mmel_remarks: "(O) One may be inoperative provided associated system quantity indicator operative.", hitl_reason: "Remarks differ - manual review required" },
+                { ata_chapter: "34", item_number: "34-52-01", item_description: "Radio Altimeter", verdict: "MISSING_IN_MEL", severity: "warning", mel_category: "", mmel_category: "C", mel_remarks: "", mmel_remarks: "(O) One may be inoperative provided CAT II/III ops not conducted.", hitl_reason: "MMEL item not found in MEL - verify if equipment installed" },
+                { ata_chapter: "52", item_number: "52-10-01", item_description: "Passenger Door", verdict: "MISSING_IN_MEL", severity: "warning", mel_category: "", mmel_category: "A", mel_remarks: "", mmel_remarks: "All doors must be operative for dispatch.", hitl_reason: "MMEL item not found in MEL" },
+                { ata_chapter: "21", item_number: "21-51-01", item_description: "Air Conditioning Pack", verdict: "COMPLIANT", severity: "info", mel_category: "C", mmel_category: "C", mel_remarks: "(O) May be inoperative provided remaining pack operates normally.", mmel_remarks: "(O) May be inoperative provided: (a) remaining pack operates normally, (b) APU bleed available." },
+                { ata_chapter: "32", item_number: "32-40-01", item_description: "Nose Wheel Steering System", verdict: "MORE_RESTRICTIVE", severity: "info", mel_category: "B", mmel_category: "C", mel_remarks: "(M)(O) May be inoperative provided aircraft is not operated on contaminated runway.", mmel_remarks: "(M)(O) May be inoperative provided: (a) runway not contaminated, (b) pushback used." },
+                { ata_chapter: "24", item_number: "24-22-01", item_description: "AC Generator", verdict: "COMPLIANT", severity: "info", mel_category: "C", mmel_category: "C", mel_remarks: "(O)(M) May be inoperative provided APU generator is operative.", mmel_remarks: "(O)(M) May be inoperative provided: (a) APU generator is operative, (b) ETOPS prohibited." },
+                { ata_chapter: "34", item_number: "34-10-01", item_description: "Flight Management System (FMS)", verdict: "COMPLIANT", severity: "info", mel_category: "C", mmel_category: "C", mel_remarks: "(O) One may be inoperative provided RNAV operations are not conducted.", mmel_remarks: "(O) One may be inoperative provided: (a) RNAV ops prohibited, (b) manual navigation available." },
+                { ata_chapter: "49", item_number: "49-10-01", item_description: "Auxiliary Power Unit (APU)", verdict: "COMPLIANT", severity: "info", mel_category: "C", mmel_category: "C", mel_remarks: "(O)(M) May be inoperative provided external power is available.", mmel_remarks: "(O)(M) May be inoperative provided: (a) external power available, (b) main generators operative." },
+                { ata_chapter: "77", item_number: "77-10-01", item_description: "Engine Indicating System", verdict: "MORE_RESTRICTIVE", severity: "info", mel_category: "A", mmel_category: "B", mel_remarks: "Must be operative.", mmel_remarks: "(M) Both primary systems required. Secondary may substitute per AFM." }
+            ]
+        };
+
+        const verdictConfig = {
+            COMPLIANT: { label: 'Conforme', icon: '✓', class: 'badge-compliant' },
+            MORE_RESTRICTIVE: { label: 'Plus Restrictif', icon: '↑', class: 'badge-more' },
+            LESS_RESTRICTIVE: { label: 'Moins Restrictif', icon: '↓', class: 'badge-less' },
+            MISSING_IN_MEL: { label: 'Absent MEL', icon: '⚠', class: 'badge-missing-mel' },
+            MISSING_IN_MMEL: { label: 'Absent MMEL', icon: '○', class: 'badge-missing-mmel' },
+            CATEGORY_MISMATCH: { label: 'Écart Cat.', icon: '≠', class: 'badge-mismatch' },
+            REMARKS_DEVIATION: { label: 'Écart Rem.', icon: '~', class: 'badge-deviation' }
+        };
+
+        const severityConfig = {
+            critical: { label: 'Critique', class: 'severity-critical' },
+            high: { label: 'Élevé', class: 'severity-high' },
+            medium: { label: 'Moyen', class: 'severity-medium' },
+            warning: { label: 'Attention', class: 'severity-warning' },
+            info: { label: 'Info', class: 'severity-info' }
+        };
+
+        function init() {
+            renderSummaryCards();
+            renderDonutChart();
+            renderBarChart();
+            renderTable(auditData.comparisons);
+            setupFilters();
+        }
+
+        function renderSummaryCards() {
+            const s = auditData.summary;
+            const cards = [
+                { label: 'Items Analysés', value: s.total, color: '#374151' },
+                { label: 'Taux Conformité', value: s.compliance_rate + '%', subtitle: (s.compliant + s.more_restrictive) + ' items OK', color: '#16a34a' },
+                { label: 'Écarts Critiques', value: auditData.severity_breakdown.critical, subtitle: 'Action immédiate', color: '#dc2626' },
+                { label: 'Review HITL', value: s.hitl_required, subtitle: 'En attente', color: '#ea580c' },
+                { label: 'SLA 48h', value: auditData.severity_breakdown.critical + auditData.severity_breakdown.high, subtitle: 'Prioritaires', color: '#7c3aed' }
+            ];
+            document.getElementById('summaryCards').innerHTML = cards.map(c => 
+                '<div class="summary-card"><div class="label">' + c.label + '</div><div class="value" style="color:' + c.color + '">' + c.value + '</div>' + (c.subtitle ? '<div class="subtitle">' + c.subtitle + '</div>' : '') + '</div>'
+            ).join('');
+        }
+
+        function renderDonutChart() {
+            const s = auditData.summary;
+            const data = [
+                { label: 'Conforme', value: s.compliant, color: '#16a34a' },
+                { label: 'Plus Restrictif', value: s.more_restrictive, color: '#2563eb' },
+                { label: 'Moins Restrictif', value: s.less_restrictive, color: '#dc2626' },
+                { label: 'Absent MEL', value: s.missing_in_mel, color: '#ea580c' },
+                { label: 'Autres', value: s.other_deviations, color: '#7c3aed' }
+            ].filter(d => d.value > 0);
+
+            const total = data.reduce((sum, d) => sum + d.value, 0);
+            const size = 180, strokeWidth = 30, radius = (size - strokeWidth) / 2;
+            const circumference = 2 * Math.PI * radius;
+
+            let offset = 0;
+            let segments = '';
+            data.forEach(d => {
+                const percent = d.value / total;
+                const dashArray = (circumference * percent) + ' ' + (circumference * (1 - percent));
+                segments += '<circle cx="' + (size/2) + '" cy="' + (size/2) + '" r="' + radius + '" fill="none" stroke="' + d.color + '" stroke-width="' + strokeWidth + '" stroke-dasharray="' + dashArray + '" stroke-dashoffset="' + (-offset) + '"/>';
+                offset += circumference * percent;
+            });
+
+            document.getElementById('donutChart').innerHTML = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" style="transform:rotate(-90deg)">' + segments + '</svg><div class="donut-center"><div class="value">' + total + '</div><div class="label">Total</div></div>';
+            document.getElementById('donutLegend').innerHTML = data.map(d => '<div class="legend-item"><div class="legend-dot" style="background:' + d.color + '"></div><span>' + d.label + ': ' + d.value + '</span></div>').join('');
+        }
+
+        function renderBarChart() {
+            const data = [
+                { label: 'Critique', value: auditData.severity_breakdown.critical, color: '#dc2626' },
+                { label: 'Élevé', value: auditData.severity_breakdown.high, color: '#ea580c' },
+                { label: 'Moyen', value: auditData.severity_breakdown.medium, color: '#d97706' },
+                { label: 'Attention', value: auditData.severity_breakdown.warning, color: '#ca8a04' },
+                { label: 'Info', value: auditData.severity_breakdown.info, color: '#16a34a' }
+            ];
+            const max = Math.max.apply(null, data.map(d => d.value)) || 1;
+            document.getElementById('barChart').innerHTML = data.map(d => 
+                '<div class="bar-item"><div class="bar-label">' + d.label + '</div><div class="bar-container"><div class="bar-fill" style="width:' + ((d.value/max)*100) + '%;background:' + d.color + '"><span class="bar-value">' + d.value + '</span></div></div></div>'
+            ).join('');
+        }
+
+        function renderTable(items) {
+            const severityOrder = { critical: 0, high: 1, medium: 2, warning: 3, info: 4 };
+            items = items.slice().sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+
+            let html = '';
+            items.forEach((item, i) => {
+                const v = verdictConfig[item.verdict] || { label: item.verdict, icon: '?', class: '' };
+                const sv = severityConfig[item.severity] || severityConfig.info;
+                const mismatch = item.mel_category && item.mmel_category && item.mel_category !== item.mmel_category;
+
+                html += '<tr class="data-row" onclick="toggleRow(' + i + ')" id="row-' + i + '">';
+                html += '<td><span class="expand-icon">▶</span><span class="mono">' + item.ata_chapter + '</span></td>';
+                html += '<td class="mono">' + item.item_number + '</td>';
+                html += '<td><div class="description" title="' + item.item_description + '">' + item.item_description + '</div></td>';
+                html += '<td class="center"><span class="category' + (mismatch ? ' mismatch' : '') + '">' + (item.mel_category || '-') + '</span></td>';
+                html += '<td class="center"><span class="category">' + (item.mmel_category || '-') + '</span></td>';
+                html += '<td><span class="badge ' + v.class + '">' + v.icon + ' ' + v.label + '</span></td>';
+                html += '<td><span class="severity ' + sv.class + '">' + sv.label + '</span></td>';
+                html += '</tr>';
+                
+                html += '<tr class="expanded-row" id="expanded-' + i + '"><td colspan="7"><div class="expanded-content">';
+                html += '<div class="expanded-grid">';
+                html += '<div class="expanded-section mel"><h4>📘 MEL</h4>';
+                html += '<div class="expanded-box mel"><div class="label">Catégorie</div><div class="value large" style="color:#3b82f6">' + (item.mel_category || '-') + '</div></div>';
+                html += '<div class="expanded-box mel"><div class="label">Remarques</div><div class="value">' + (item.mel_remarks || 'Aucune') + '</div></div></div>';
+                html += '<div class="expanded-section mmel"><h4>📗 MMEL (Référence)</h4>';
+                html += '<div class="expanded-box mmel"><div class="label">Catégorie</div><div class="value large" style="color:#22c55e">' + (item.mmel_category || '-') + '</div></div>';
+                html += '<div class="expanded-box mmel"><div class="label">Remarques</div><div class="value">' + (item.mmel_remarks || 'Aucune') + '</div></div></div>';
+                html += '</div>';
+                if (item.hitl_reason) {
+                    html += '<div class="alert-box ' + (item.severity === 'critical' ? 'critical' : 'warning') + '">⚠️ ' + item.hitl_reason + '</div>';
+                }
+                html += '</div></td></tr>';
+            });
+
+            document.getElementById('tableBody').innerHTML = html;
+            document.getElementById('itemCount').textContent = items.length + ' / ' + auditData.comparisons.length + ' items';
+        }
+
+        let expandedRow = null;
+        function toggleRow(index) {
+            const row = document.getElementById('row-' + index);
+            const content = document.querySelector('#expanded-' + index + ' .expanded-content');
+            
+            if (expandedRow === index) {
+                content.classList.remove('show');
+                row.classList.remove('expanded');
+                expandedRow = null;
+            } else {
+                if (expandedRow !== null) {
+                    document.querySelector('#expanded-' + expandedRow + ' .expanded-content').classList.remove('show');
+                    document.getElementById('row-' + expandedRow).classList.remove('expanded');
+                }
+                content.classList.add('show');
+                row.classList.add('expanded');
+                expandedRow = index;
+            }
+        }
+
+        function setupFilters() {
+            var searchInput = document.getElementById('searchInput');
+            var severityFilter = document.getElementById('severityFilter');
+            var verdictFilter = document.getElementById('verdictFilter');
+
+            function applyFilters() {
+                var search = searchInput.value.toLowerCase();
+                var severity = severityFilter.value;
+                var verdict = verdictFilter.value;
+                expandedRow = null;
+
+                var filtered = auditData.comparisons.filter(function(item) {
+                    var matchSearch = !search || item.ata_chapter.toLowerCase().indexOf(search) !== -1 || item.item_number.toLowerCase().indexOf(search) !== -1 || item.item_description.toLowerCase().indexOf(search) !== -1;
+                    var matchSeverity = severity === 'all' || item.severity === severity;
+                    var matchVerdict = verdict === 'all' || item.verdict === verdict;
+                    return matchSearch && matchSeverity && matchVerdict;
+                });
+                renderTable(filtered);
+            }
+
+            searchInput.addEventListener('input', applyFilters);
+            severityFilter.addEventListener('change', applyFilters);
+            verdictFilter.addEventListener('change', applyFilters);
+        }
+
+        init();
+    </script>
+</body>
+</html>

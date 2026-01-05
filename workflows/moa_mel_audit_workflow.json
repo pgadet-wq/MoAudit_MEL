@@ -1,0 +1,286 @@
+{
+  "name": "MoA_MEL Audit Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "moa-mel-audit",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "moa-mel-audit-webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validation des inputs\nconst body = $input.first().json.body;\n\nif (!body.mel_path && !body.mel_content) {\n  throw new Error('MEL document required (mel_path or mel_content)');\n}\n\nif (!body.mmel_path && !body.mmel_content) {\n  throw new Error('MMEL document required (mmel_path or mmel_content)');\n}\n\n// Générer un ID unique pour ce run\nconst runId = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14) + '_' + Math.random().toString(36).slice(2, 8);\n\nreturn {\n  runId,\n  melSource: body.mel_path || 'inline_content',\n  mmelSource: body.mmel_path || 'inline_content',\n  melContent: body.mel_content || null,\n  mmelContent: body.mmel_content || null,\n  apiKey: body.api_key || $env.MISTRAL_API_KEY,\n  options: {\n    semanticMatching: body.semantic_matching !== false,\n    llmAnalysis: body.llm_analysis !== false,\n    confidenceThreshold: body.confidence_threshold || 0.85\n  }\n};"
+      },
+      "id": "validate-input",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.mistral.ai/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"pixtral-12b-2409\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"Analyze this MEL/MMEL document page and extract ALL equipment items in structured JSON format.\\n\\nFor each item found, extract:\\n- ata_chapter: The ATA chapter number (e.g., \\\"21\\\", \\\"24-10\\\", \\\"32-40\\\")\\n- item_number: The specific item number or code\\n- sequence_number: Sub-item sequence if present\\n- item_description: Full description of the equipment\\n- category: Dispatch category (A, B, C, D, or \\\"-\\\")\\n- repair_interval: Time limit for repair\\n- number_installed: Number of items installed on aircraft\\n- number_required: Minimum number required for dispatch\\n- remarks: Any operational remarks, conditions, (O) (M) annotations\\n- exceptions: Any exceptions or special conditions\\n\\nReturn a JSON array with this exact structure:\\n{\\n  \\\"items\\\": [...],\\n  \\\"page_type\\\": \\\"mel_table|title_page|text_page|other\\\",\\n  \\\"extraction_notes\\\": \\\"string\\\"\\n}\\n\\nBe extremely precise with numbers and categories - aviation safety depends on accuracy.\"\n        },\n        {\n          \"type\": \"image_url\",\n          \"image_url\": {\n            \"url\": \"{{ $json.imageBase64 }}\"\n          }\n        }\n      ]\n    }\n  ],\n  \"temperature\": 0.1,\n  \"max_tokens\": 4096,\n  \"response_format\": {\"type\": \"json_object\"}\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "pixtral-extract",
+      "name": "Pixtral VLM Extract",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [850, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mistral-api",
+          "name": "Mistral API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.mistral.ai/v1/embeddings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"mistral-embed\",\n  \"input\": {{ JSON.stringify($json.textsToEmbed) }}\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "mistral-embed",
+      "name": "Mistral Embeddings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1050, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "mistral-api",
+          "name": "Mistral API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Indexation et Matching MEL ↔ MMEL\nconst melItems = $input.first().json.melItems;\nconst mmelItems = $input.first().json.mmelItems;\nconst melEmbeddings = $input.first().json.melEmbeddings || [];\nconst mmelEmbeddings = $input.first().json.mmelEmbeddings || [];\n\n// Fonction de normalisation\nfunction normalizeKey(ata, itemNum) {\n  const normAta = (ata || '').toString().replace(/[^\\d\\-]/g, '').toUpperCase();\n  const normItem = (itemNum || '').toString().replace(/\\s+/g, '').toUpperCase();\n  return `${normAta}|${normItem}`;\n}\n\n// Fonction de similarité cosinus\nfunction cosineSimilarity(a, b) {\n  if (!a || !b || a.length !== b.length) return 0;\n  let dot = 0, normA = 0, normB = 0;\n  for (let i = 0; i < a.length; i++) {\n    dot += a[i] * b[i];\n    normA += a[i] * a[i];\n    normB += b[i] * b[i];\n  }\n  return dot / (Math.sqrt(normA) * Math.sqrt(normB));\n}\n\n// Créer l'index MMEL\nconst mmelIndex = {};\nmmelItems.forEach((item, idx) => {\n  const key = normalizeKey(item.ata_chapter, item.item_number);\n  mmelIndex[key] = { ...item, embedding: mmelEmbeddings[idx] || null };\n});\n\n// Matcher chaque item MEL\nconst matches = [];\nconst matchedMmelKeys = new Set();\n\nmelItems.forEach((melItem, idx) => {\n  const melKey = normalizeKey(melItem.ata_chapter, melItem.item_number);\n  const melEmb = melEmbeddings[idx] || null;\n  \n  // 1. Recherche exacte\n  let exactMatch = mmelIndex[melKey] || null;\n  let exactScore = exactMatch ? 1.0 : 0;\n  \n  // 2. Recherche sémantique si pas de match exact et embeddings disponibles\n  let semanticScore = 0;\n  let semanticMatch = null;\n  \n  if (!exactMatch && melEmb) {\n    let bestScore = 0;\n    let bestKey = null;\n    \n    for (const [mmelKey, mmelItem] of Object.entries(mmelIndex)) {\n      if (mmelItem.embedding) {\n        const sim = cosineSimilarity(melEmb, mmelItem.embedding);\n        if (sim > bestScore) {\n          bestScore = sim;\n          bestKey = mmelKey;\n        }\n      }\n    }\n    \n    if (bestScore >= 0.85) {\n      semanticMatch = mmelIndex[bestKey];\n      semanticScore = bestScore;\n    }\n  }\n  \n  // Déterminer le match final\n  const finalMatch = exactMatch || semanticMatch;\n  const finalMmelKey = exactMatch ? melKey : (semanticMatch ? Object.keys(mmelIndex).find(k => mmelIndex[k] === semanticMatch) : null);\n  \n  if (finalMmelKey) {\n    matchedMmelKeys.add(finalMmelKey);\n  }\n  \n  matches.push({\n    mel_item_id: melKey,\n    mmel_item_id: finalMmelKey,\n    exact_match: !!exactMatch,\n    exact_score: exactScore,\n    semantic_score: semanticScore,\n    combined_score: exactMatch ? 1.0 : semanticScore * 0.4,\n    match_type: exactMatch ? 'exact' : (semanticMatch ? 'semantic' : 'none'),\n    match_confidence: exactMatch ? 'high' : (semanticScore >= 0.95 ? 'high' : (semanticScore >= 0.85 ? 'medium' : 'low')),\n    requires_hitl_review: !exactMatch && semanticScore < 0.95,\n    hitl_reason: !exactMatch ? (semanticMatch ? `Semantic match only (${(semanticScore*100).toFixed(1)}%)` : 'No matching MMEL item found') : ''\n  });\n});\n\n// Identifier les items MMEL non matchés\nconst unmatchedMmel = Object.keys(mmelIndex).filter(k => !matchedMmelKeys.has(k));\n\nreturn {\n  melItems,\n  mmelItems,\n  matches,\n  unmatchedMmel,\n  stats: {\n    totalMel: melItems.length,\n    totalMmel: mmelItems.length,\n    matched: matches.filter(m => m.mmel_item_id).length,\n    exactMatches: matches.filter(m => m.exact_match).length,\n    semanticMatches: matches.filter(m => m.match_type === 'semantic').length,\n    noMatch: matches.filter(m => !m.mmel_item_id).length,\n    hitlRequired: matches.filter(m => m.requires_hitl_review).length\n  }\n};"
+      },
+      "id": "indexer",
+      "name": "MEL/MMEL Indexer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Comparaison MEL ↔ MMEL et génération des verdicts\nconst { melItems, mmelItems, matches, unmatchedMmel } = $input.first().json;\n\nconst CATEGORY_HIERARCHY = { 'A': 1, 'B': 2, 'C': 3, 'D': 4, '-': 5, '': 5 };\n\nconst VERDICT_SEVERITY = {\n  'COMPLIANT': 'info',\n  'MORE_RESTRICTIVE': 'info',\n  'LESS_RESTRICTIVE': 'critical',\n  'MISSING_IN_MEL': 'warning',\n  'MISSING_IN_MMEL': 'info',\n  'CATEGORY_MISMATCH': 'high',\n  'REMARKS_DEVIATION': 'medium'\n};\n\nconst SLA_HOURS = {\n  'critical': 48,\n  'high': 48,\n  'medium': 24,\n  'warning': 24,\n  'info': 0\n};\n\n// Créer les index\nconst melIndex = {};\nmelItems.forEach(item => {\n  const key = `${item.ata_chapter}|${item.item_number}`.replace(/\\s/g, '');\n  melIndex[key] = item;\n});\n\nconst mmelIndex = {};\nmmelItems.forEach(item => {\n  const key = `${item.ata_chapter}|${item.item_number}`.replace(/\\s/g, '');\n  mmelIndex[key] = item;\n});\n\n// Fonctions de comparaison\nfunction compareCategories(melCat, mmelCat) {\n  const melRank = CATEGORY_HIERARCHY[melCat?.toUpperCase()?.trim()] || 5;\n  const mmelRank = CATEGORY_HIERARCHY[mmelCat?.toUpperCase()?.trim()] || 5;\n  \n  if (melRank === mmelRank) return { status: 'equal', notes: 'Categories match' };\n  if (melRank < mmelRank) return { status: 'more_restrictive', notes: `MEL (${melCat}) more restrictive than MMEL (${mmelCat})` };\n  return { status: 'less_restrictive', notes: `MEL (${melCat}) LESS restrictive than MMEL (${mmelCat}) - VIOLATION` };\n}\n\nfunction parseInterval(interval) {\n  if (!interval) return null;\n  const str = interval.toString().toLowerCase();\n  const dayMatch = str.match(/(\\d+)\\s*d/);\n  if (dayMatch) return parseInt(dayMatch[1]);\n  const hourMatch = str.match(/(\\d+)\\s*h/);\n  if (hourMatch) return parseInt(hourMatch[1]) / 24;\n  return null;\n}\n\nfunction compareIntervals(melInt, mmelInt) {\n  const melDays = parseInterval(melInt);\n  const mmelDays = parseInterval(mmelInt);\n  \n  if (melDays === null || mmelDays === null) {\n    if (melInt && !mmelInt) return { status: 'more_restrictive', notes: 'MEL specifies interval, MMEL does not' };\n    if (mmelInt && !melInt) return { status: 'less_restrictive', notes: 'MMEL requires interval, MEL does not specify' };\n    return { status: 'unknown', notes: 'Could not parse intervals' };\n  }\n  \n  if (melDays === mmelDays) return { status: 'equal', notes: `Intervals match (${melDays} days)` };\n  if (melDays < mmelDays) return { status: 'more_restrictive', notes: `MEL (${melDays}d) shorter than MMEL (${mmelDays}d)` };\n  return { status: 'less_restrictive', notes: `MEL (${melDays}d) longer than MMEL (${mmelDays}d)` };\n}\n\nfunction compareRemarks(melRem, mmelRem) {\n  const mel = (melRem || '').toLowerCase().trim();\n  const mmel = (mmelRem || '').toLowerCase().trim();\n  \n  if (!mel && !mmel) return { status: 'equal', notes: 'No remarks in either' };\n  if (mel === mmel) return { status: 'equal', notes: 'Remarks identical' };\n  \n  // Check (M) maintenance requirement\n  const melHasM = mel.includes('(m)');\n  const mmelHasM = mmel.includes('(m)');\n  \n  if (melHasM && !mmelHasM) return { status: 'more_restrictive', notes: 'MEL adds maintenance requirement (M)' };\n  if (mmelHasM && !melHasM) return { status: 'less_restrictive', notes: 'MEL removes maintenance requirement (M)' };\n  \n  return { status: 'different', notes: 'Remarks differ - requires review' };\n}\n\n// Comparer les items\nconst comparisons = [];\n\nfor (const match of matches) {\n  const melItem = melIndex[match.mel_item_id] || {};\n  const mmelItem = match.mmel_item_id ? mmelIndex[match.mmel_item_id] : null;\n  \n  if (!mmelItem) {\n    // Item MEL sans équivalent MMEL\n    comparisons.push({\n      mel_item_id: match.mel_item_id,\n      mmel_item_id: null,\n      ata_chapter: melItem.ata_chapter || '',\n      item_number: melItem.item_number || '',\n      item_description: melItem.item_description || '',\n      verdict: 'MISSING_IN_MMEL',\n      severity: 'info',\n      mel_category: melItem.category || '',\n      mmel_category: '',\n      mel_remarks: melItem.remarks || '',\n      mmel_remarks: '',\n      details: [{ field: 'mmel_item', status: 'different', notes: 'Item exists in MEL but not in MMEL - operator-specific' }],\n      requires_hitl_review: false,\n      hitl_reason: '',\n      sla_hours: 0,\n      compared_at: new Date().toISOString()\n    });\n    continue;\n  }\n  \n  // Comparer les différents champs\n  const details = [];\n  const verdicts = [];\n  \n  const catComp = compareCategories(melItem.category, mmelItem.category);\n  details.push({ field: 'category', mel_value: melItem.category, mmel_value: mmelItem.category, ...catComp });\n  verdicts.push(catComp.status);\n  \n  const intComp = compareIntervals(melItem.repair_interval, mmelItem.repair_interval);\n  details.push({ field: 'repair_interval', mel_value: melItem.repair_interval, mmel_value: mmelItem.repair_interval, ...intComp });\n  if (intComp.status !== 'unknown') verdicts.push(intComp.status);\n  \n  const remComp = compareRemarks(melItem.remarks, mmelItem.remarks);\n  details.push({ field: 'remarks', mel_value: melItem.remarks, mmel_value: mmelItem.remarks, ...remComp });\n  if (remComp.status !== 'equal') verdicts.push(remComp.status);\n  \n  // Déterminer le verdict final\n  let finalVerdict;\n  if (verdicts.includes('less_restrictive')) {\n    finalVerdict = 'LESS_RESTRICTIVE';\n  } else if (verdicts.every(v => v === 'equal')) {\n    finalVerdict = 'COMPLIANT';\n  } else if (verdicts.includes('more_restrictive') && !verdicts.includes('less_restrictive')) {\n    finalVerdict = 'MORE_RESTRICTIVE';\n  } else if (verdicts.includes('different')) {\n    finalVerdict = 'REMARKS_DEVIATION';\n  } else {\n    finalVerdict = 'COMPLIANT';\n  }\n  \n  const severity = VERDICT_SEVERITY[finalVerdict] || 'info';\n  const slaHours = SLA_HOURS[severity] || 0;\n  const requiresHitl = ['critical', 'high', 'medium'].includes(severity);\n  \n  comparisons.push({\n    mel_item_id: match.mel_item_id,\n    mmel_item_id: match.mmel_item_id,\n    ata_chapter: melItem.ata_chapter || '',\n    item_number: melItem.item_number || '',\n    item_description: melItem.item_description || '',\n    verdict: finalVerdict,\n    severity,\n    mel_category: melItem.category || '',\n    mmel_category: mmelItem.category || '',\n    mel_remarks: melItem.remarks || '',\n    mmel_remarks: mmelItem.remarks || '',\n    mel_repair_interval: melItem.repair_interval || '',\n    mmel_repair_interval: mmelItem.repair_interval || '',\n    details,\n    requires_hitl_review: requiresHitl,\n    hitl_reason: requiresHitl ? `${finalVerdict}: ${details.filter(d => d.status !== 'equal').map(d => d.notes).join('; ')}` : '',\n    sla_hours: slaHours,\n    compared_at: new Date().toISOString()\n  });\n}\n\n// Ajouter les items MMEL non matchés\nfor (const mmelKey of unmatchedMmel) {\n  const mmelItem = mmelIndex[mmelKey];\n  if (!mmelItem) continue;\n  \n  comparisons.push({\n    mel_item_id: '',\n    mmel_item_id: mmelKey,\n    ata_chapter: mmelItem.ata_chapter || '',\n    item_number: mmelItem.item_number || '',\n    item_description: mmelItem.item_description || '',\n    verdict: 'MISSING_IN_MEL',\n    severity: 'warning',\n    mel_category: '',\n    mmel_category: mmelItem.category || '',\n    mel_remarks: '',\n    mmel_remarks: mmelItem.remarks || '',\n    details: [{ field: 'mel_item', status: 'different', notes: 'MMEL item not found in MEL - verify if equipment installed' }],\n    requires_hitl_review: true,\n    hitl_reason: 'MMEL item not found in MEL - verify if equipment installed',\n    sla_hours: 48,\n    compared_at: new Date().toISOString()\n  });\n}\n\n// Calculer les statistiques\nconst stats = {\n  total: comparisons.length,\n  compliant: comparisons.filter(c => c.verdict === 'COMPLIANT').length,\n  more_restrictive: comparisons.filter(c => c.verdict === 'MORE_RESTRICTIVE').length,\n  less_restrictive: comparisons.filter(c => c.verdict === 'LESS_RESTRICTIVE').length,\n  missing_in_mel: comparisons.filter(c => c.verdict === 'MISSING_IN_MEL').length,\n  missing_in_mmel: comparisons.filter(c => c.verdict === 'MISSING_IN_MMEL').length,\n  other_deviations: comparisons.filter(c => c.verdict === 'REMARKS_DEVIATION').length,\n  hitl_required: comparisons.filter(c => c.requires_hitl_review).length\n};\n\nstats.compliance_rate = ((stats.compliant + stats.more_restrictive) / Math.max(stats.total, 1) * 100).toFixed(2);\n\nconst severityBreakdown = {\n  critical: comparisons.filter(c => c.severity === 'critical').length,\n  high: comparisons.filter(c => c.severity === 'high').length,\n  medium: comparisons.filter(c => c.severity === 'medium').length,\n  warning: comparisons.filter(c => c.severity === 'warning').length,\n  info: comparisons.filter(c => c.severity === 'info').length\n};\n\nreturn {\n  comparisons,\n  summary: stats,\n  severity_breakdown: severityBreakdown\n};"
+      },
+      "id": "comparator",
+      "name": "MEL/MMEL Comparator",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Génération du rapport d'audit et des logs HITL\nconst { comparisons, summary, severity_breakdown } = $input.first().json;\nconst runId = $('Validate Input').first().json.runId;\n\n// Rapport complet\nconst auditReport = {\n  run_id: runId,\n  audit_timestamp: new Date().toISOString(),\n  mel_document: $('Validate Input').first().json.melSource,\n  mmel_document: $('Validate Input').first().json.mmelSource,\n  summary,\n  severity_breakdown,\n  comparisons\n};\n\n// Extraire les findings critiques\nconst criticalFindings = comparisons\n  .filter(c => c.severity === 'critical')\n  .map(c => ({\n    item: `${c.ata_chapter}-${c.item_number}`,\n    description: c.item_description,\n    verdict: c.verdict,\n    details: c.hitl_reason,\n    mel_category: c.mel_category,\n    mmel_category: c.mmel_category\n  }));\n\n// Log HITL\nconst hitlItems = comparisons\n  .filter(c => c.requires_hitl_review)\n  .sort((a, b) => {\n    const severityOrder = { critical: 0, high: 1, medium: 2, warning: 3, info: 4 };\n    return severityOrder[a.severity] - severityOrder[b.severity];\n  })\n  .map(c => ({\n    id: `${c.ata_chapter}-${c.item_number}`,\n    verdict: c.verdict,\n    severity: c.severity,\n    sla_hours: c.sla_hours,\n    reason: c.hitl_reason,\n    mel_data: {\n      item_id: c.mel_item_id,\n      category: c.mel_category,\n      remarks: c.mel_remarks,\n      repair_interval: c.mel_repair_interval\n    },\n    mmel_data: {\n      item_id: c.mmel_item_id,\n      category: c.mmel_category,\n      remarks: c.mmel_remarks,\n      repair_interval: c.mmel_repair_interval\n    },\n    details: c.details?.filter(d => d.status !== 'equal').map(d => d.notes) || [],\n    validation: {\n      status: 'PENDING',\n      decision: null,\n      corrective_action: null,\n      validated_by: null,\n      validated_at: null,\n      comments: null\n    }\n  }));\n\nconst hitlLog = {\n  generated_at: new Date().toISOString(),\n  run_id: runId,\n  total_items_for_review: hitlItems.length,\n  by_severity: {\n    critical: hitlItems.filter(i => i.severity === 'critical').length,\n    high: hitlItems.filter(i => i.severity === 'high').length,\n    medium: hitlItems.filter(i => i.severity === 'medium').length,\n    warning: hitlItems.filter(i => i.severity === 'warning').length\n  },\n  items: hitlItems\n};\n\n// Recommandations\nconst recommendations = [];\nif (summary.less_restrictive > 0) {\n  recommendations.push({\n    priority: 'HIGH',\n    action: `Review ${summary.less_restrictive} items where MEL is less restrictive than MMEL`,\n    deadline: '48 hours'\n  });\n}\nif (summary.missing_in_mel > 0) {\n  recommendations.push({\n    priority: 'MEDIUM',\n    action: `Verify ${summary.missing_in_mel} MMEL items not found in MEL`,\n    deadline: '1 week'\n  });\n}\n\n// Rapport final\nconst finalReport = {\n  run_id: runId,\n  generated_at: new Date().toISOString(),\n  status: 'completed',\n  summary,\n  severity_breakdown,\n  critical_findings: criticalFindings,\n  recommendations\n};\n\nreturn {\n  auditReport,\n  hitlLog,\n  finalReport\n};"
+      },
+      "id": "synthesizer",
+      "name": "Audit Synthesizer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {
+        "content": "# HITL Log - Items à valider\n\n{{ $json.hitlLog.items.map(item => `## ${item.id} [${item.severity.toUpperCase()}]\\n- Verdict: ${item.verdict}\\n- Raison: ${item.reason}\\n- SLA: ${item.sla_hours}h\\n- MEL Cat: ${item.mel_data.category} | MMEL Cat: ${item.mmel_data.category}\\n`).join('\\n') }}",
+        "options": {}
+      },
+      "id": "hitl-markdown",
+      "name": "Format HITL Log",
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [1850, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2050, 300]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/outputs/audit_result_{{ $('Validate Input').first().json.runId }}.json",
+        "dataPropertyName": "auditReport",
+        "options": {}
+      },
+      "id": "save-audit",
+      "name": "Save Audit Result",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1850, 200]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "=/outputs/hitl_{{ $('Validate Input').first().json.runId }}.json",
+        "dataPropertyName": "hitlLog",
+        "options": {}
+      },
+      "id": "save-hitl",
+      "name": "Save HITL Log",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1850, 500]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Pixtral VLM Extract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pixtral VLM Extract": {
+      "main": [
+        [
+          {
+            "node": "Mistral Embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mistral Embeddings": {
+      "main": [
+        [
+          {
+            "node": "MEL/MMEL Indexer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MEL/MMEL Indexer": {
+      "main": [
+        [
+          {
+            "node": "MEL/MMEL Comparator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MEL/MMEL Comparator": {
+      "main": [
+        [
+          {
+            "node": "Audit Synthesizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Audit Synthesizer": {
+      "main": [
+        [
+          {
+            "node": "Save Audit Result",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Format HITL Log",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Save HITL Log",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "MoA_MEL",
+      "createdAt": "2026-01-02T00:00:00.000Z"
+    },
+    {
+      "name": "Aviation",
+      "createdAt": "2026-01-02T00:00:00.000Z"
+    }
+  ],
+  "pinData": {},
+  "versionId": "1.0.0"
+}
