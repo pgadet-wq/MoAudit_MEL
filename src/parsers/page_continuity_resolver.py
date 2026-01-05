@@ -107,7 +107,7 @@ class PageContinuityResolver:
         r'\(continued\)',
         r'\bsuite\b',
         r'\(suite\)',
-        r'\bcont[\'']?d\b',
+        r"\bcont['']?d\b",
         r'→\s*$',  # Flèche en fin de ligne
     ]
 
