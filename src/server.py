@@ -352,72 +352,145 @@ async def dashboard():
 
 @app.get("/api/demo-data")
 async def get_demo_data():
-    """Données de démonstration pour le dashboard"""
+    """
+    Génère des données de démonstration depuis les fichiers sample.
+    Compare sample_mel.json avec sample_mmel.json pour produire un audit réaliste.
+    """
+    # Chemins des fichiers sample
+    data_dir = Path(__file__).parent.parent / "data"
+    mel_path = data_dir / "sample_mel.json"
+    mmel_path = data_dir / "sample_mmel.json"
+
+    # Charger les fichiers sample
+    try:
+        with open(mel_path, "r", encoding="utf-8") as f:
+            mel_data = json.load(f)
+        with open(mmel_path, "r", encoding="utf-8") as f:
+            mmel_data = json.load(f)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Sample data files not found")
+
+    mel_items = mel_data.get("items", [])
+    mmel_items = mmel_data.get("items", [])
+
+    # Indexer MMEL par item_number
+    mmel_index = {item["item_number"]: item for item in mmel_items}
+
+    # Générer les comparaisons
+    comparisons = []
+    stats = {
+        "compliant": 0, "more_restrictive": 0, "less_restrictive": 0,
+        "missing_in_mel": 0, "missing_in_mmel": 0
+    }
+    severity_breakdown = {"critical": 0, "high": 0, "medium": 0, "warning": 0, "info": 0}
+
+    # Ordre des catégories (A=plus restrictif, D=moins restrictif)
+    category_order = {"A": 0, "B": 1, "C": 2, "D": 3, "": 4, "-": 4}
+
+    for mel_item in mel_items:
+        item_num = mel_item["item_number"]
+        mmel_item = mmel_index.get(item_num)
+
+        if not mmel_item:
+            comparisons.append({
+                "mel_item_id": f"{mel_item['ata_chapter']}|{item_num}",
+                "mmel_item_id": "",
+                "ata_chapter": mel_item["ata_chapter"],
+                "item_number": item_num,
+                "item_description": mel_item["item_description"],
+                "verdict": "MISSING_IN_MMEL",
+                "severity": "info",
+                "mel_category": mel_item.get("category", ""),
+                "mmel_category": "",
+                "mel_remarks": mel_item.get("remarks", ""),
+                "mmel_remarks": ""
+            })
+            stats["missing_in_mmel"] += 1
+            severity_breakdown["info"] += 1
+            continue
+
+        mel_cat = mel_item.get("category", "")
+        mmel_cat = mmel_item.get("category", "")
+        mel_order = category_order.get(mel_cat, 4)
+        mmel_order = category_order.get(mmel_cat, 4)
+
+        if mel_cat == mmel_cat:
+            verdict, severity = "COMPLIANT", "info"
+            stats["compliant"] += 1
+            severity_breakdown["info"] += 1
+        elif mel_order < mmel_order:
+            verdict, severity = "MORE_RESTRICTIVE", "info"
+            stats["more_restrictive"] += 1
+            severity_breakdown["info"] += 1
+        else:
+            verdict, severity = "LESS_RESTRICTIVE", "critical"
+            stats["less_restrictive"] += 1
+            severity_breakdown["critical"] += 1
+
+        comparisons.append({
+            "mel_item_id": f"{mel_item['ata_chapter']}|{item_num}",
+            "mmel_item_id": f"{mmel_item['ata_chapter']}|{item_num}",
+            "ata_chapter": mel_item["ata_chapter"],
+            "item_number": item_num,
+            "item_description": mel_item["item_description"],
+            "verdict": verdict,
+            "severity": severity,
+            "mel_category": mel_cat,
+            "mmel_category": mmel_cat,
+            "mel_remarks": mel_item.get("remarks", ""),
+            "mmel_remarks": mmel_item.get("remarks", ""),
+            "hitl_reason": f"MEL category {mel_cat} vs MMEL {mmel_cat}" if verdict == "LESS_RESTRICTIVE" else None
+        })
+        del mmel_index[item_num]
+
+    # Items MMEL non trouvés dans MEL
+    for item_num, mmel_item in mmel_index.items():
+        comparisons.append({
+            "mel_item_id": "",
+            "mmel_item_id": f"{mmel_item['ata_chapter']}|{item_num}",
+            "ata_chapter": mmel_item["ata_chapter"],
+            "item_number": item_num,
+            "item_description": mmel_item["item_description"],
+            "verdict": "MISSING_IN_MEL",
+            "severity": "warning",
+            "mel_category": "",
+            "mmel_category": mmel_item.get("category", ""),
+            "mel_remarks": "",
+            "mmel_remarks": mmel_item.get("remarks", ""),
+            "hitl_reason": "MMEL item not found in MEL"
+        })
+        stats["missing_in_mel"] += 1
+        severity_breakdown["warning"] += 1
+
+    # Trier par sévérité
+    severity_order = {"critical": 0, "high": 1, "medium": 2, "warning": 3, "info": 4}
+    comparisons.sort(key=lambda x: severity_order.get(x["severity"], 5))
+
+    total = len(comparisons)
+    compliant_count = stats["compliant"] + stats["more_restrictive"]
+    compliance_rate = round((compliant_count / total * 100) if total > 0 else 0, 2)
+
     return {
-        "run_id": "20260102_143052",
-        "mel_document": "Air_France_A320_MEL.pdf",
-        "mmel_document": "A320_MMEL_Rev42.pdf",
+        "run_id": f"demo_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        "mel_document": mel_data.get("document_name", "sample_mel.json"),
+        "mmel_document": mmel_data.get("document_name", "sample_mmel.json"),
         "audit_timestamp": datetime.now().isoformat(),
+        "aircraft_context": {
+            "aircraft_type": mel_data.get("aircraft_type", ""),
+            "operator": mel_data.get("operator", "Sample Airlines")
+        },
         "summary": {
-            "total": 487,
-            "compliant": 412,
-            "more_restrictive": 35,
-            "less_restrictive": 8,
-            "missing_in_mel": 22,
-            "missing_in_mmel": 5,
-            "other_deviations": 5,
-            "hitl_required": 40,
-            "compliance_rate": 91.78
+            "total": total,
+            "compliant": stats["compliant"],
+            "more_restrictive": stats["more_restrictive"],
+            "less_restrictive": stats["less_restrictive"],
+            "missing_in_mel": stats["missing_in_mel"],
+            "missing_in_mmel": stats["missing_in_mmel"],
+            "hitl_required": stats["less_restrictive"] + stats["missing_in_mel"],
+            "compliance_rate": compliance_rate
         },
-        "severity_breakdown": {
-            "critical": 8,
-            "high": 15,
-            "medium": 12,
-            "warning": 22,
-            "info": 430
-        },
-        "comparisons": [
-            {
-                "mel_item_id": "24|24-10-01",
-                "mmel_item_id": "24|24-10-01",
-                "ata_chapter": "24",
-                "item_number": "24-10-01",
-                "item_description": "Main Battery",
-                "verdict": "LESS_RESTRICTIVE",
-                "severity": "critical",
-                "mel_category": "B",
-                "mmel_category": "A",
-                "mel_remarks": "May be inoperative",
-                "mmel_remarks": "Go item - must be operative",
-                "hitl_reason": "CRITICAL: MEL less restrictive than MMEL"
-            },
-            {
-                "mel_item_id": "21|21-51-01",
-                "mmel_item_id": "21|21-51-01",
-                "ata_chapter": "21",
-                "item_number": "21-51-01",
-                "item_description": "Air Conditioning Pack",
-                "verdict": "COMPLIANT",
-                "severity": "info",
-                "mel_category": "C",
-                "mmel_category": "C",
-                "mel_remarks": "(O) May be inoperative provided remaining pack operates normally",
-                "mmel_remarks": "(O) May be inoperative provided remaining pack operates normally"
-            },
-            {
-                "mel_item_id": "32|32-40-01",
-                "mmel_item_id": "32|32-40-01",
-                "ata_chapter": "32",
-                "item_number": "32-40-01",
-                "item_description": "Nose Wheel Steering System",
-                "verdict": "MORE_RESTRICTIVE",
-                "severity": "info",
-                "mel_category": "B",
-                "mmel_category": "C",
-                "mel_remarks": "(M) Requires maintenance before dispatch",
-                "mmel_remarks": "May be inoperative"
-            }
-        ]
+        "severity_breakdown": severity_breakdown,
+        "comparisons": comparisons
     }
 
 
