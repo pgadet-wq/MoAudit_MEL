@@ -7,8 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin="anonymous"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin="anonymous"></script>
-    <script src="https://unpkg.com/prop-types@15/prop-types.min.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/recharts@2.9.3/umd/Recharts.min.js" crossorigin="anonymous"></script>
     <style>
         .loading-spinner {
             border: 3px solid #f3f3f3;
@@ -21,6 +19,9 @@
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
+        }
+        .bar-chart-bar {
+            transition: width 0.5s ease-out;
         }
     </style>
 </head>
@@ -36,29 +37,53 @@
 
     <script>
     // ============== Configuration ==============
-    const API_BASE = '';  // Same origin
+    const API_BASE = '';
 
     // ============== Composants React ==============
     const { useState, useEffect, useMemo } = React;
-    const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } = Recharts;
 
-    // Icons (simplified)
-    const Icon = ({ name, size = 18, className = '' }) => {
-        const icons = {
-            'alert-triangle': '⚠️',
-            'check-circle': '✓',
-            'x-circle': '✗',
-            'alert-circle': '!',
-            'file-text': '📄',
-            'clock': '🕐',
-            'trending-up': '📈',
-            'download': '⬇️',
-            'search': '🔍',
-            'filter': '⚙️',
-            'chevron-down': '▼',
-            'chevron-up': '▲'
-        };
-        return React.createElement('span', { className, style: { fontSize: size } }, icons[name] || '•');
+    // Simple CSS Bar Chart Component
+    const BarChart = ({ data, maxValue }) => {
+        const max = maxValue || Math.max(...data.map(d => d.value), 1);
+        return React.createElement('div', { className: 'space-y-2' },
+            data.map((item, i) =>
+                React.createElement('div', { key: i, className: 'flex items-center gap-2' },
+                    React.createElement('span', { className: 'w-20 text-xs text-gray-600 text-right' }, item.name),
+                    React.createElement('div', { className: 'flex-1 bg-gray-100 rounded-full h-6 overflow-hidden' },
+                        React.createElement('div', {
+                            className: 'bar-chart-bar h-full rounded-full flex items-center justify-end pr-2',
+                            style: {
+                                width: `${(item.value / max) * 100}%`,
+                                backgroundColor: item.color,
+                                minWidth: item.value > 0 ? '24px' : '0'
+                            }
+                        }, React.createElement('span', { className: 'text-xs text-white font-bold' }, item.value))
+                    )
+                )
+            )
+        );
+    };
+
+    // Simple Donut/Pie visualization
+    const DonutChart = ({ data }) => {
+        const total = data.reduce((sum, d) => sum + d.value, 0) || 1;
+        return React.createElement('div', { className: 'flex flex-wrap gap-2 justify-center' },
+            data.map((item, i) =>
+                React.createElement('div', {
+                    key: i,
+                    className: 'flex items-center gap-1 px-2 py-1 rounded-full text-xs',
+                    style: { backgroundColor: `${item.color}20`, color: item.color }
+                },
+                    React.createElement('span', {
+                        className: 'w-3 h-3 rounded-full',
+                        style: { backgroundColor: item.color }
+                    }),
+                    React.createElement('span', { className: 'font-medium' },
+                        `${item.name}: ${item.value} (${Math.round(item.value/total*100)}%)`
+                    )
+                )
+            )
+        );
     };
 
     // Severity configurations
@@ -82,6 +107,7 @@
 
     // Summary Card Component
     const SummaryCard = ({ title, value, subtitle, icon, color }) => {
+        const icons = { 'file-text': '📄', 'check-circle': '✓', 'x-circle': '✗', 'alert-triangle': '⚠️', 'clock': '🕐' };
         return React.createElement('div', {
             className: 'bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow'
         },
@@ -92,9 +118,9 @@
                     subtitle && React.createElement('p', { className: 'text-xs text-gray-400 mt-1' }, subtitle)
                 ),
                 React.createElement('div', {
-                    className: 'p-3 rounded-lg',
+                    className: 'p-3 rounded-lg text-2xl',
                     style: { backgroundColor: `${color}15` }
-                }, React.createElement(Icon, { name: icon, size: 24 }))
+                }, icons[icon] || '•')
             )
         );
     };
@@ -134,7 +160,6 @@
                 .then(r => r.json())
                 .then(result => {
                     setAudits(result.audits || []);
-                    // Sélectionner le dernier audit complété
                     const completed = (result.audits || []).filter(a => a.status === 'completed');
                     if (completed.length > 0) {
                         setSelectedAudit(completed[0].job_id);
@@ -146,7 +171,6 @@
         // Charger les données d'un audit
         useEffect(() => {
             if (!selectedAudit) {
-                // Charger les données démo si pas d'audit
                 fetch(`${API_BASE}/api/demo-data`)
                     .then(r => r.json())
                     .then(result => {
@@ -167,7 +191,6 @@
                     return r.json();
                 })
                 .then(result => {
-                    // Adapter les données au format attendu
                     const formatted = {
                         run_id: result.run_id || selectedAudit,
                         mel_document: result.mel_document || 'MEL',
@@ -189,7 +212,6 @@
                 })
                 .catch(e => {
                     console.error('Erreur:', e);
-                    // Fallback vers démo
                     fetch(`${API_BASE}/api/demo-data`)
                         .then(r => r.json())
                         .then(result => {
@@ -221,7 +243,6 @@
                 filtered = filtered.filter(item => item.verdict === verdictFilter);
             }
 
-            // Sort by severity
             const severityOrder = { critical: 0, high: 1, medium: 2, warning: 3, info: 4 };
             filtered.sort((a, b) => (severityOrder[a.severity] || 5) - (severityOrder[b.severity] || 5));
 
@@ -341,44 +362,15 @@
                     })
                 ),
 
-                // Charts
+                // Charts (CSS-based)
                 React.createElement('div', { className: 'grid grid-cols-2 gap-6 mb-8' },
                     React.createElement('div', { className: 'bg-white rounded-xl p-6 shadow-sm border border-gray-100' },
                         React.createElement('h3', { className: 'font-semibold text-gray-900 mb-4' }, 'Distribution des Verdicts'),
-                        React.createElement(ResponsiveContainer, { width: '100%', height: 250 },
-                            React.createElement(PieChart, null,
-                                React.createElement(Pie, {
-                                    data: verdictChartData,
-                                    cx: '50%',
-                                    cy: '50%',
-                                    innerRadius: 60,
-                                    outerRadius: 100,
-                                    dataKey: 'value',
-                                    label: ({ name, value }) => `${name}: ${value}`
-                                },
-                                    verdictChartData.map((entry, index) =>
-                                        React.createElement(Cell, { key: `cell-${index}`, fill: entry.color })
-                                    )
-                                ),
-                                React.createElement(Tooltip)
-                            )
-                        )
+                        React.createElement(DonutChart, { data: verdictChartData })
                     ),
                     React.createElement('div', { className: 'bg-white rounded-xl p-6 shadow-sm border border-gray-100' },
                         React.createElement('h3', { className: 'font-semibold text-gray-900 mb-4' }, 'Distribution par Sévérité'),
-                        React.createElement(ResponsiveContainer, { width: '100%', height: 250 },
-                            React.createElement(BarChart, { data: severityChartData, layout: 'vertical' },
-                                React.createElement(CartesianGrid, { strokeDasharray: '3 3', horizontal: false }),
-                                React.createElement(XAxis, { type: 'number' }),
-                                React.createElement(YAxis, { type: 'category', dataKey: 'name', width: 80 }),
-                                React.createElement(Tooltip),
-                                React.createElement(Bar, { dataKey: 'value', radius: [0, 4, 4, 0] },
-                                    severityChartData.map((entry, index) =>
-                                        React.createElement(Cell, { key: `cell-${index}`, fill: entry.color })
-                                    )
-                                )
-                            )
-                        )
+                        React.createElement(BarChart, { data: severityChartData })
                     )
                 ),
 
@@ -386,7 +378,7 @@
                 React.createElement('div', { className: 'bg-white rounded-xl p-4 mb-6 shadow-sm border border-gray-100' },
                     React.createElement('div', { className: 'flex items-center space-x-4' },
                         React.createElement('div', { className: 'flex items-center flex-1 bg-gray-50 rounded-lg px-3 py-2' },
-                            React.createElement(Icon, { name: 'search', className: 'text-gray-400 mr-2' }),
+                            React.createElement('span', { className: 'text-gray-400 mr-2' }, '🔍'),
                             React.createElement('input', {
                                 type: 'text',
                                 placeholder: 'Rechercher par ATA, Item ou Description...',
