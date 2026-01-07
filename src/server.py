@@ -8,7 +8,7 @@ Endpoints pour n8n et interface web.
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -16,7 +16,6 @@ import json
 import shutil
 import uuid
 from datetime import datetime
-import asyncio
 import logging
 
 # Import pipeline V2
@@ -86,6 +85,48 @@ async def root():
 async def health_check():
     """Health check pour monitoring"""
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+
+@app.get("/api/info")
+async def api_info():
+    """Informations sur l'API et ses endpoints"""
+    return {
+        "name": "MoA_MEL Audit API",
+        "version": "2.0.0",
+        "description": "API pour l'audit automatisé MEL/MMEL avec contexte avion",
+        "endpoints": {
+            "dashboard": {
+                "GET /": "Redirige vers le dashboard",
+                "GET /dashboard": "Interface web du dashboard"
+            },
+            "audit": {
+                "POST /api/upload/{doc_type}": "Upload un document MEL ou MMEL",
+                "POST /api/audit/start": "Lance un audit (mel_path, mmel_path, aircraft_msn, operation_type)",
+                "GET /api/audit/status/{job_id}": "Statut d'un audit",
+                "GET /api/audit/result/{job_id}": "Résultat complet d'un audit",
+                "GET /api/audits": "Liste tous les audits"
+            },
+            "hitl": {
+                "GET /api/hitl/{job_id}": "Items nécessitant review humaine",
+                "POST /api/hitl/{job_id}/validate/{item_id}": "Valider un item HITL"
+            },
+            "webhooks": {
+                "POST /webhook/n8n/audit": "Déclencher un audit depuis n8n",
+                "POST /webhook/n8n/parse": "Parser un document depuis n8n"
+            },
+            "other": {
+                "GET /health": "Health check",
+                "GET /api/info": "Cette documentation",
+                "GET /api/demo-data": "Données de démonstration",
+                "GET /docs": "Documentation Swagger"
+            }
+        },
+        "aircraft_context": {
+            "msn": "Manufacturer Serial Number de l'avion",
+            "operation_type": "CAT (Commercial Air Transport), SPO, NCO, NCC",
+            "etops_certified": "True si opérations ETOPS"
+        }
+    }
 
 
 @app.post("/api/upload/{doc_type}")
@@ -255,40 +296,87 @@ async def get_hitl_items(job_id: str):
     """Récupère les items nécessitant review HITL"""
     if job_id not in audit_jobs:
         raise HTTPException(status_code=404, detail="Job not found")
-    
+
     job = audit_jobs[job_id]
     if job["status"] != "completed":
         raise HTTPException(status_code=400, detail="Audit not completed")
-    
-    # Charger le fichier HITL
+
+    # Charger le fichier HITL (V2 utilise hitl_log_*.json)
     result = job.get("result", {})
     run_id = result.get("run_id", "")
-    hitl_path = OUTPUT_DIR / f"hitl_audit_{run_id}.json"
-    
-    if hitl_path.exists():
-        with open(hitl_path, "r") as f:
-            return json.load(f)
-    
-    return {"items": []}
+
+    # Essayer les deux formats (V2 et legacy)
+    for pattern in [f"hitl_log_{run_id}.json", f"hitl_audit_{run_id}.json"]:
+        hitl_path = OUTPUT_DIR / pattern
+        if hitl_path.exists():
+            with open(hitl_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+
+    return {"items": [], "message": "No HITL items found for this audit"}
 
 
 @app.post("/api/hitl/{job_id}/validate/{item_id}")
-async def validate_hitl_item(job_id: str, item_id: str, 
-                            decision: str, 
+async def validate_hitl_item(job_id: str, item_id: str,
+                            decision: str,
                             comments: Optional[str] = None,
                             validated_by: Optional[str] = None):
-    """Valide un item HITL"""
+    """
+    Valide un item HITL et persiste la décision dans le fichier HITL.
+
+    Decisions possibles: ACCEPT, REJECT, ESCALATE
+    """
+    if job_id not in audit_jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+
     if decision not in ["ACCEPT", "REJECT", "ESCALATE"]:
-        raise HTTPException(status_code=400, detail="Invalid decision")
-    
-    # TODO: Implémenter la persistance
-    return {
+        raise HTTPException(status_code=400, detail="Invalid decision. Use: ACCEPT, REJECT, ESCALATE")
+
+    job = audit_jobs[job_id]
+    result = job.get("result", {})
+    run_id = result.get("run_id", "")
+
+    # Trouver le fichier HITL
+    hitl_path = None
+    for pattern in [f"hitl_log_{run_id}.json", f"hitl_audit_{run_id}.json"]:
+        candidate = OUTPUT_DIR / pattern
+        if candidate.exists():
+            hitl_path = candidate
+            break
+
+    validation_record = {
         "item_id": item_id,
         "decision": decision,
-        "validated_by": validated_by,
+        "validated_by": validated_by or "anonymous",
         "validated_at": datetime.now().isoformat(),
         "comments": comments
     }
+
+    # Persister dans le fichier HITL si trouvé
+    if hitl_path:
+        with open(hitl_path, "r", encoding="utf-8") as f:
+            hitl_data = json.load(f)
+
+        # Mettre à jour l'item correspondant
+        for item in hitl_data.get("items", []):
+            if item.get("mel_item_id") == item_id or item.get("item_id") == item_id:
+                item["validation"] = {
+                    "status": decision,
+                    "validated_by": validated_by or "anonymous",
+                    "validated_at": datetime.now().isoformat(),
+                    "comments": comments
+                }
+                break
+
+        # Sauvegarder
+        with open(hitl_path, "w", encoding="utf-8") as f:
+            json.dump(hitl_data, f, indent=2, ensure_ascii=False)
+
+        validation_record["persisted"] = True
+    else:
+        validation_record["persisted"] = False
+        validation_record["warning"] = "HITL file not found, validation not persisted"
+
+    return validation_record
 
 
 # ============== Webhooks pour n8n ==============
