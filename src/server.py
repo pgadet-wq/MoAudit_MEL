@@ -19,16 +19,16 @@ from datetime import datetime
 import asyncio
 import logging
 
-# Import pipeline
-from pipeline import MoAMELPipeline
+# Import pipeline V2
+from pipeline_v2 import MoAMELPipelineV2, PipelineConfigV2
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("MoA_MEL_API")
 
 app = FastAPI(
     title="MoA_MEL Audit API",
-    description="API pour l'audit automatisé MEL/MMEL",
-    version="1.0.0-poc"
+    description="API pour l'audit automatisé MEL/MMEL avec contexte avion (MSN, Operation)",
+    version="2.0.0"
 )
 
 # CORS pour l'interface web
@@ -51,12 +51,17 @@ audit_jobs = {}
 
 
 class AuditRequest(BaseModel):
-    """Requête d'audit"""
+    """Requête d'audit V2 avec contexte avion"""
     mel_path: str
     mmel_path: str
     api_key: Optional[str] = ""
     mel_is_json: bool = False
     mmel_is_json: bool = False
+    # Paramètres V2 - Contexte avion
+    aircraft_msn: int = 0
+    operation_type: str = "CAT"  # CAT, SPO, NCO, NCC
+    aircraft_type: str = ""
+    etops_certified: bool = False
 
 
 class AuditStatus(BaseModel):
@@ -128,7 +133,7 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks):
         "started_at": datetime.now().isoformat()
     }
     
-    # Lancer en background
+    # Lancer en background avec paramètres V2
     background_tasks.add_task(
         run_audit_task,
         job_id,
@@ -136,41 +141,66 @@ async def start_audit(request: AuditRequest, background_tasks: BackgroundTasks):
         str(mmel_path),
         request.api_key,
         request.mel_is_json,
-        request.mmel_is_json
+        request.mmel_is_json,
+        request.aircraft_msn,
+        request.operation_type,
+        request.aircraft_type,
+        request.etops_certified
     )
-    
-    return {"job_id": job_id, "status": "started"}
+
+    return {"job_id": job_id, "status": "started", "aircraft_context": {
+        "msn": request.aircraft_msn,
+        "operation": request.operation_type
+    }}
 
 
 async def run_audit_task(job_id: str, mel_path: str, mmel_path: str,
-                        api_key: str, mel_is_json: bool, mmel_is_json: bool):
-    """Tâche d'audit en arrière-plan"""
+                        api_key: str, mel_is_json: bool, mmel_is_json: bool,
+                        aircraft_msn: int = 0, operation_type: str = "CAT",
+                        aircraft_type: str = "", etops_certified: bool = False):
+    """Tâche d'audit V2 en arrière-plan avec contexte avion"""
     try:
         audit_jobs[job_id]["status"] = "running"
         audit_jobs[job_id]["progress"] = 10
-        audit_jobs[job_id]["message"] = "Initializing pipeline..."
-        
-        pipeline = MoAMELPipeline(api_key=api_key, output_dir=str(OUTPUT_DIR))
-        
+        audit_jobs[job_id]["message"] = "Initializing pipeline V2..."
+
+        # Configuration V2 avec contexte avion
+        config = PipelineConfigV2(
+            api_key=api_key,
+            aircraft_msn=aircraft_msn,
+            operation_type=operation_type,
+            aircraft_type=aircraft_type,
+            etops_certified=etops_certified,
+            output_dir=str(OUTPUT_DIR)
+        )
+
+        pipeline = MoAMELPipelineV2(config)
+
         audit_jobs[job_id]["progress"] = 20
-        audit_jobs[job_id]["message"] = "Parsing MEL document..."
-        
-        # Exécuter le pipeline
+        audit_jobs[job_id]["message"] = f"Parsing documents (MSN: {aircraft_msn}, Op: {operation_type})..."
+
+        # Exécuter le pipeline V2
         result = pipeline.run_full_pipeline(
             mel_source=mel_path,
             mmel_source=mmel_path,
             mel_is_json=mel_is_json,
             mmel_is_json=mmel_is_json
         )
-        
+
         audit_jobs[job_id]["status"] = "completed"
         audit_jobs[job_id]["progress"] = 100
-        audit_jobs[job_id]["message"] = "Audit completed successfully"
+        audit_jobs[job_id]["message"] = "Audit V2 completed successfully"
         audit_jobs[job_id]["result"] = result
         audit_jobs[job_id]["completed_at"] = datetime.now().isoformat()
-        
+        audit_jobs[job_id]["aircraft_context"] = {
+            "msn": aircraft_msn,
+            "operation": operation_type,
+            "aircraft_type": aircraft_type,
+            "etops": etops_certified
+        }
+
     except Exception as e:
-        logger.error(f"Audit failed for job {job_id}: {e}")
+        logger.error(f"Audit V2 failed for job {job_id}: {e}")
         audit_jobs[job_id]["status"] = "failed"
         audit_jobs[job_id]["message"] = str(e)
 
