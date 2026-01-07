@@ -77,8 +77,9 @@ class AuditStatus(BaseModel):
 
 @app.get("/")
 async def root():
-    """Page d'accueil"""
-    return {"message": "MoA_MEL Audit API", "version": "1.0.0-poc"}
+    """Page d'accueil - redirige vers le dashboard"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/dashboard")
 
 
 @app.get("/health")
@@ -324,32 +325,29 @@ async def n8n_parse_webhook(doc_type: str, file_path: str, api_key: str = ""):
 
 # ============== Interface Web ==============
 
+# Servir les fichiers statiques
+STATIC_DIR = Path(__file__).parent / "static"
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+
 @app.get("/dashboard", response_class=HTMLResponse)
 async def dashboard():
-    """Page du dashboard (servi depuis le build React)"""
-    # Pour le PoC, servir une page HTML simple qui charge le React bundle
-    return """
-    <!DOCTYPE html>
-    <html lang="fr">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>MoA_MEL Dashboard</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-        <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-        <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    </head>
-    <body>
-        <div id="root"></div>
-        <script>
-            // Pour le PoC, les données sont intégrées
-            // En production, charger depuis l'API
-            console.log("Dashboard loading...");
-            // Le composant React sera monté ici
-        </script>
-    </body>
-    </html>
-    """
+    """Sert le dashboard React intégré"""
+    dashboard_path = STATIC_DIR / "dashboard.html"
+    if dashboard_path.exists():
+        return FileResponse(dashboard_path, media_type="text/html")
+    else:
+        # Fallback si le fichier n'existe pas
+        return HTMLResponse("""
+        <!DOCTYPE html>
+        <html><head><title>MoA_MEL Dashboard</title></head>
+        <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+            <h1>Dashboard non disponible</h1>
+            <p>Le fichier static/dashboard.html n'a pas été trouvé.</p>
+            <p><a href="/docs">Accéder à l'API →</a></p>
+        </body></html>
+        """)
 
 
 @app.get("/api/demo-data")

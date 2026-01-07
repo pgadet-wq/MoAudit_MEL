@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoA_MEL Dashboard - Audit MEL/MMEL</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/recharts@2.10.3/umd/Recharts.min.js"></script>
+    <script src="https://unpkg.com/lucide-react@0.294.0/dist/umd/lucide-react.min.js"></script>
+    <style>
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-50 to-blue-50 min-h-screen">
+    <div id="root">
+        <div class="flex items-center justify-center min-h-screen">
+            <div class="text-center">
+                <div class="loading-spinner mx-auto mb-4"></div>
+                <p class="text-gray-600">Chargement du dashboard...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // ============== Configuration ==============
+    const API_BASE = '';  // Same origin
+
+    // ============== Composants React ==============
+    const { useState, useEffect, useMemo } = React;
+    const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } = Recharts;
+
+    // Icons (simplified)
+    const Icon = ({ name, size = 18, className = '' }) => {
+        const icons = {
+            'alert-triangle': '⚠️',
+            'check-circle': '✓',
+            'x-circle': '✗',
+            'alert-circle': '!',
+            'file-text': '📄',
+            'clock': '🕐',
+            'trending-up': '📈',
+            'download': '⬇️',
+            'search': '🔍',
+            'filter': '⚙️',
+            'chevron-down': '▼',
+            'chevron-up': '▲'
+        };
+        return React.createElement('span', { className, style: { fontSize: size } }, icons[name] || '•');
+    };
+
+    // Severity configurations
+    const severityConfig = {
+        critical: { color: '#DC2626', bg: '#FEE2E2', label: 'Critique' },
+        high: { color: '#EA580C', bg: '#FFEDD5', label: 'Élevé' },
+        medium: { color: '#D97706', bg: '#FEF3C7', label: 'Moyen' },
+        warning: { color: '#CA8A04', bg: '#FEF9C3', label: 'Attention' },
+        info: { color: '#16A34A', bg: '#DCFCE7', label: 'Info' }
+    };
+
+    const verdictConfig = {
+        COMPLIANT: { color: '#16A34A', label: 'Conforme', icon: '✓' },
+        MORE_RESTRICTIVE: { color: '#2563EB', label: 'Plus Restrictif', icon: '↑' },
+        LESS_RESTRICTIVE: { color: '#DC2626', label: 'Moins Restrictif', icon: '↓' },
+        MISSING_IN_MEL: { color: '#EA580C', label: 'Absent MEL', icon: '⚠' },
+        MISSING_IN_MMEL: { color: '#6B7280', label: 'Absent MMEL', icon: '○' },
+        CATEGORY_MISMATCH: { color: '#7C3AED', label: 'Écart Catégorie', icon: '≠' },
+        REMARKS_DEVIATION: { color: '#0891B2', label: 'Écart Remarques', icon: '~' }
+    };
+
+    // Summary Card Component
+    const SummaryCard = ({ title, value, subtitle, icon, color }) => {
+        return React.createElement('div', {
+            className: 'bg-white rounded-xl p-5 shadow-sm border border-gray-100 hover:shadow-md transition-shadow'
+        },
+            React.createElement('div', { className: 'flex items-start justify-between' },
+                React.createElement('div', null,
+                    React.createElement('p', { className: 'text-sm text-gray-500 font-medium' }, title),
+                    React.createElement('p', { className: 'text-3xl font-bold mt-1', style: { color } }, value),
+                    subtitle && React.createElement('p', { className: 'text-xs text-gray-400 mt-1' }, subtitle)
+                ),
+                React.createElement('div', {
+                    className: 'p-3 rounded-lg',
+                    style: { backgroundColor: `${color}15` }
+                }, React.createElement(Icon, { name: icon, size: 24 }))
+            )
+        );
+    };
+
+    // Verdict Badge
+    const VerdictBadge = ({ verdict }) => {
+        const config = verdictConfig[verdict] || { color: '#6B7280', label: verdict, icon: '?' };
+        return React.createElement('span', {
+            className: 'inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold',
+            style: { backgroundColor: `${config.color}15`, color: config.color }
+        }, config.icon + ' ' + config.label);
+    };
+
+    // Severity Badge
+    const SeverityBadge = ({ severity }) => {
+        const config = severityConfig[severity] || severityConfig.info;
+        return React.createElement('span', {
+            className: 'inline-flex items-center px-2 py-0.5 rounded text-xs font-medium',
+            style: { backgroundColor: config.bg, color: config.color }
+        }, config.label);
+    };
+
+    // Main Dashboard Component
+    const MoAMELDashboard = () => {
+        const [data, setData] = useState(null);
+        const [loading, setLoading] = useState(true);
+        const [error, setError] = useState(null);
+        const [searchTerm, setSearchTerm] = useState('');
+        const [severityFilter, setSeverityFilter] = useState('all');
+        const [verdictFilter, setVerdictFilter] = useState('all');
+        const [audits, setAudits] = useState([]);
+        const [selectedAudit, setSelectedAudit] = useState(null);
+
+        // Charger la liste des audits
+        useEffect(() => {
+            fetch(`${API_BASE}/api/audits`)
+                .then(r => r.json())
+                .then(result => {
+                    setAudits(result.audits || []);
+                    // Sélectionner le dernier audit complété
+                    const completed = (result.audits || []).filter(a => a.status === 'completed');
+                    if (completed.length > 0) {
+                        setSelectedAudit(completed[0].job_id);
+                    }
+                })
+                .catch(e => console.error('Erreur chargement audits:', e));
+        }, []);
+
+        // Charger les données d'un audit
+        useEffect(() => {
+            if (!selectedAudit) {
+                // Charger les données démo si pas d'audit
+                fetch(`${API_BASE}/api/demo-data`)
+                    .then(r => r.json())
+                    .then(result => {
+                        setData(result);
+                        setLoading(false);
+                    })
+                    .catch(e => {
+                        setError('Erreur de chargement');
+                        setLoading(false);
+                    });
+                return;
+            }
+
+            setLoading(true);
+            fetch(`${API_BASE}/api/audit/result/${selectedAudit}`)
+                .then(r => {
+                    if (!r.ok) throw new Error('Audit non trouvé');
+                    return r.json();
+                })
+                .then(result => {
+                    // Adapter les données au format attendu
+                    const formatted = {
+                        run_id: result.run_id || selectedAudit,
+                        mel_document: result.mel_document || 'MEL',
+                        mmel_document: result.mmel_document || 'MMEL',
+                        audit_timestamp: result.audit_timestamp || new Date().toISOString(),
+                        aircraft_context: result.aircraft_context || {},
+                        summary: result.summary || result.statistics || {
+                            total: 0, compliant: 0, more_restrictive: 0,
+                            less_restrictive: 0, missing_in_mel: 0, missing_in_mmel: 0,
+                            hitl_required: 0, compliance_rate: 0
+                        },
+                        severity_breakdown: result.severity_breakdown || {
+                            critical: 0, high: 0, medium: 0, warning: 0, info: 0
+                        },
+                        comparisons: result.comparisons || []
+                    };
+                    setData(formatted);
+                    setLoading(false);
+                })
+                .catch(e => {
+                    console.error('Erreur:', e);
+                    // Fallback vers démo
+                    fetch(`${API_BASE}/api/demo-data`)
+                        .then(r => r.json())
+                        .then(result => {
+                            setData(result);
+                            setLoading(false);
+                        });
+                });
+        }, [selectedAudit]);
+
+        // Filter comparisons
+        const filteredComparisons = useMemo(() => {
+            if (!data || !data.comparisons) return [];
+            let filtered = [...data.comparisons];
+
+            if (searchTerm) {
+                const term = searchTerm.toLowerCase();
+                filtered = filtered.filter(item =>
+                    (item.ata_chapter || '').toLowerCase().includes(term) ||
+                    (item.item_number || '').toLowerCase().includes(term) ||
+                    (item.item_description || '').toLowerCase().includes(term)
+                );
+            }
+
+            if (severityFilter !== 'all') {
+                filtered = filtered.filter(item => item.severity === severityFilter);
+            }
+
+            if (verdictFilter !== 'all') {
+                filtered = filtered.filter(item => item.verdict === verdictFilter);
+            }
+
+            // Sort by severity
+            const severityOrder = { critical: 0, high: 1, medium: 2, warning: 3, info: 4 };
+            filtered.sort((a, b) => (severityOrder[a.severity] || 5) - (severityOrder[b.severity] || 5));
+
+            return filtered;
+        }, [data, searchTerm, severityFilter, verdictFilter]);
+
+        if (loading) {
+            return React.createElement('div', { className: 'flex items-center justify-center min-h-screen' },
+                React.createElement('div', { className: 'text-center' },
+                    React.createElement('div', { className: 'loading-spinner mx-auto mb-4' }),
+                    React.createElement('p', { className: 'text-gray-600' }, 'Chargement des données...')
+                )
+            );
+        }
+
+        if (error) {
+            return React.createElement('div', { className: 'flex items-center justify-center min-h-screen' },
+                React.createElement('div', { className: 'text-center text-red-600' },
+                    React.createElement('p', null, error)
+                )
+            );
+        }
+
+        // Chart data
+        const verdictChartData = [
+            { name: 'Conforme', value: data.summary.compliant || 0, color: '#16A34A' },
+            { name: 'Plus Restrictif', value: data.summary.more_restrictive || 0, color: '#2563EB' },
+            { name: 'Moins Restrictif', value: data.summary.less_restrictive || 0, color: '#DC2626' },
+            { name: 'Absent MEL', value: data.summary.missing_in_mel || 0, color: '#EA580C' },
+            { name: 'Absent MMEL', value: data.summary.missing_in_mmel || 0, color: '#6B7280' }
+        ].filter(d => d.value > 0);
+
+        const severityChartData = [
+            { name: 'Critique', value: data.severity_breakdown?.critical || 0, color: '#DC2626' },
+            { name: 'Élevé', value: data.severity_breakdown?.high || 0, color: '#EA580C' },
+            { name: 'Moyen', value: data.severity_breakdown?.medium || 0, color: '#D97706' },
+            { name: 'Attention', value: data.severity_breakdown?.warning || 0, color: '#CA8A04' },
+            { name: 'Info', value: data.severity_breakdown?.info || 0, color: '#16A34A' }
+        ];
+
+        return React.createElement('div', { className: 'min-h-screen' },
+            // Header
+            React.createElement('header', { className: 'bg-white border-b border-gray-200 sticky top-0 z-10' },
+                React.createElement('div', { className: 'max-w-7xl mx-auto px-6 py-4' },
+                    React.createElement('div', { className: 'flex items-center justify-between' },
+                        React.createElement('div', { className: 'flex items-center space-x-4' },
+                            React.createElement('div', {
+                                className: 'bg-gradient-to-br from-red-600 to-red-700 text-white px-4 py-2 rounded-lg font-bold'
+                            }, 'MoA_MEL'),
+                            React.createElement('div', null,
+                                React.createElement('h1', { className: 'text-xl font-bold text-gray-900' }, 'Audit MEL/MMEL'),
+                                React.createElement('p', { className: 'text-sm text-gray-500' },
+                                    data.aircraft_context?.msn ?
+                                        `MSN ${data.aircraft_context.msn} - ${data.aircraft_context.operation || 'CAT'}` :
+                                        `Rapport d'écarts`
+                                )
+                            )
+                        ),
+                        React.createElement('div', { className: 'flex items-center space-x-3' },
+                            audits.length > 0 && React.createElement('select', {
+                                className: 'text-sm border rounded px-2 py-1',
+                                value: selectedAudit || '',
+                                onChange: (e) => setSelectedAudit(e.target.value)
+                            },
+                                React.createElement('option', { value: '' }, 'Données démo'),
+                                ...audits.filter(a => a.status === 'completed').map(a =>
+                                    React.createElement('option', { key: a.job_id, value: a.job_id },
+                                        `Audit ${a.job_id.slice(0, 8)}...`
+                                    )
+                                )
+                            ),
+                            React.createElement('span', {
+                                className: 'text-xs bg-gray-100 px-2 py-1 rounded font-mono'
+                            }, `Run #${data.run_id}`)
+                        )
+                    )
+                )
+            ),
+
+            // Main content
+            React.createElement('main', { className: 'max-w-7xl mx-auto px-6 py-8' },
+                // Summary Cards
+                React.createElement('div', { className: 'grid grid-cols-5 gap-4 mb-8' },
+                    React.createElement(SummaryCard, {
+                        title: 'Items Analysés',
+                        value: data.summary.total || filteredComparisons.length,
+                        icon: 'file-text',
+                        color: '#374151'
+                    }),
+                    React.createElement(SummaryCard, {
+                        title: 'Taux Conformité',
+                        value: `${data.summary.compliance_rate || 0}%`,
+                        subtitle: `${(data.summary.compliant || 0) + (data.summary.more_restrictive || 0)} items OK`,
+                        icon: 'check-circle',
+                        color: '#16A34A'
+                    }),
+                    React.createElement(SummaryCard, {
+                        title: 'Écarts Critiques',
+                        value: data.severity_breakdown?.critical || 0,
+                        subtitle: 'Action immédiate requise',
+                        icon: 'x-circle',
+                        color: '#DC2626'
+                    }),
+                    React.createElement(SummaryCard, {
+                        title: 'Review HITL',
+                        value: data.summary.hitl_required || 0,
+                        subtitle: 'En attente validation',
+                        icon: 'alert-triangle',
+                        color: '#EA580C'
+                    }),
+                    React.createElement(SummaryCard, {
+                        title: 'SLA 48h',
+                        value: (data.severity_breakdown?.critical || 0) + (data.severity_breakdown?.high || 0),
+                        subtitle: 'Items prioritaires',
+                        icon: 'clock',
+                        color: '#7C3AED'
+                    })
+                ),
+
+                // Charts
+                React.createElement('div', { className: 'grid grid-cols-2 gap-6 mb-8' },
+                    React.createElement('div', { className: 'bg-white rounded-xl p-6 shadow-sm border border-gray-100' },
+                        React.createElement('h3', { className: 'font-semibold text-gray-900 mb-4' }, 'Distribution des Verdicts'),
+                        React.createElement(ResponsiveContainer, { width: '100%', height: 250 },
+                            React.createElement(PieChart, null,
+                                React.createElement(Pie, {
+                                    data: verdictChartData,
+                                    cx: '50%',
+                                    cy: '50%',
+                                    innerRadius: 60,
+                                    outerRadius: 100,
+                                    dataKey: 'value',
+                                    label: ({ name, value }) => `${name}: ${value}`
+                                },
+                                    verdictChartData.map((entry, index) =>
+                                        React.createElement(Cell, { key: `cell-${index}`, fill: entry.color })
+                                    )
+                                ),
+                                React.createElement(Tooltip)
+                            )
+                        )
+                    ),
+                    React.createElement('div', { className: 'bg-white rounded-xl p-6 shadow-sm border border-gray-100' },
+                        React.createElement('h3', { className: 'font-semibold text-gray-900 mb-4' }, 'Distribution par Sévérité'),
+                        React.createElement(ResponsiveContainer, { width: '100%', height: 250 },
+                            React.createElement(BarChart, { data: severityChartData, layout: 'vertical' },
+                                React.createElement(CartesianGrid, { strokeDasharray: '3 3', horizontal: false }),
+                                React.createElement(XAxis, { type: 'number' }),
+                                React.createElement(YAxis, { type: 'category', dataKey: 'name', width: 80 }),
+                                React.createElement(Tooltip),
+                                React.createElement(Bar, { dataKey: 'value', radius: [0, 4, 4, 0] },
+                                    severityChartData.map((entry, index) =>
+                                        React.createElement(Cell, { key: `cell-${index}`, fill: entry.color })
+                                    )
+                                )
+                            )
+                        )
+                    )
+                ),
+
+                // Filters
+                React.createElement('div', { className: 'bg-white rounded-xl p-4 mb-6 shadow-sm border border-gray-100' },
+                    React.createElement('div', { className: 'flex items-center space-x-4' },
+                        React.createElement('div', { className: 'flex items-center flex-1 bg-gray-50 rounded-lg px-3 py-2' },
+                            React.createElement(Icon, { name: 'search', className: 'text-gray-400 mr-2' }),
+                            React.createElement('input', {
+                                type: 'text',
+                                placeholder: 'Rechercher par ATA, Item ou Description...',
+                                className: 'bg-transparent flex-1 outline-none text-sm',
+                                value: searchTerm,
+                                onChange: (e) => setSearchTerm(e.target.value)
+                            })
+                        ),
+                        React.createElement('select', {
+                            className: 'bg-gray-50 rounded-lg px-3 py-2 text-sm outline-none border-none',
+                            value: severityFilter,
+                            onChange: (e) => setSeverityFilter(e.target.value)
+                        },
+                            React.createElement('option', { value: 'all' }, 'Toutes Sévérités'),
+                            React.createElement('option', { value: 'critical' }, 'Critique'),
+                            React.createElement('option', { value: 'high' }, 'Élevé'),
+                            React.createElement('option', { value: 'medium' }, 'Moyen'),
+                            React.createElement('option', { value: 'warning' }, 'Attention'),
+                            React.createElement('option', { value: 'info' }, 'Info')
+                        ),
+                        React.createElement('select', {
+                            className: 'bg-gray-50 rounded-lg px-3 py-2 text-sm outline-none border-none',
+                            value: verdictFilter,
+                            onChange: (e) => setVerdictFilter(e.target.value)
+                        },
+                            React.createElement('option', { value: 'all' }, 'Tous Verdicts'),
+                            React.createElement('option', { value: 'COMPLIANT' }, 'Conforme'),
+                            React.createElement('option', { value: 'MORE_RESTRICTIVE' }, 'Plus Restrictif'),
+                            React.createElement('option', { value: 'LESS_RESTRICTIVE' }, 'Moins Restrictif'),
+                            React.createElement('option', { value: 'MISSING_IN_MEL' }, 'Absent MEL')
+                        ),
+                        React.createElement('span', { className: 'text-sm text-gray-500' },
+                            `${filteredComparisons.length} / ${data.comparisons?.length || 0} items`
+                        )
+                    )
+                ),
+
+                // Table
+                React.createElement('div', { className: 'bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden' },
+                    React.createElement('table', { className: 'w-full' },
+                        React.createElement('thead', { className: 'bg-gray-50 border-b border-gray-200' },
+                            React.createElement('tr', null,
+                                React.createElement('th', { className: 'px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase' }, 'ATA'),
+                                React.createElement('th', { className: 'px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase' }, 'Item'),
+                                React.createElement('th', { className: 'px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase' }, 'Description'),
+                                React.createElement('th', { className: 'px-4 py-3 text-center text-xs font-semibold text-blue-600 uppercase' }, 'MEL Cat.'),
+                                React.createElement('th', { className: 'px-4 py-3 text-center text-xs font-semibold text-green-600 uppercase' }, 'MMEL Cat.'),
+                                React.createElement('th', { className: 'px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase' }, 'Verdict'),
+                                React.createElement('th', { className: 'px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase' }, 'Sévérité')
+                            )
+                        ),
+                        React.createElement('tbody', { className: 'divide-y divide-gray-100' },
+                            filteredComparisons.slice(0, 50).map((item, index) =>
+                                React.createElement('tr', {
+                                    key: index,
+                                    className: 'hover:bg-gray-50 transition-colors'
+                                },
+                                    React.createElement('td', { className: 'px-4 py-3 font-mono text-sm font-medium' }, item.ata_chapter),
+                                    React.createElement('td', { className: 'px-4 py-3 font-mono text-sm' }, item.item_number),
+                                    React.createElement('td', { className: 'px-4 py-3' },
+                                        React.createElement('div', {
+                                            className: 'max-w-xs truncate text-sm text-gray-700',
+                                            title: item.item_description
+                                        }, item.item_description)
+                                    ),
+                                    React.createElement('td', { className: 'px-4 py-3 text-center' },
+                                        React.createElement('span', {
+                                            className: 'font-bold text-lg',
+                                            style: { color: item.mel_category !== item.mmel_category ? '#DC2626' : '#374151' }
+                                        }, item.mel_category || '-')
+                                    ),
+                                    React.createElement('td', { className: 'px-4 py-3 text-center font-bold text-lg text-gray-700' },
+                                        item.mmel_category || '-'
+                                    ),
+                                    React.createElement('td', { className: 'px-4 py-3' },
+                                        React.createElement(VerdictBadge, { verdict: item.verdict })
+                                    ),
+                                    React.createElement('td', { className: 'px-4 py-3' },
+                                        React.createElement(SeverityBadge, { severity: item.severity })
+                                    )
+                                )
+                            )
+                        )
+                    )
+                ),
+
+                // Footer
+                React.createElement('footer', { className: 'mt-8 text-center text-sm text-gray-500' },
+                    React.createElement('p', null, 'MoA_MEL Audit V2.0 — WingMate'),
+                    React.createElement('p', { className: 'mt-1' }, 'Powered by Mistral AI')
+                )
+            )
+        );
+    };
+
+    // Render
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(MoAMELDashboard));
+    </script>
+</body>
+</html>
