@@ -300,21 +300,26 @@ async def n8n_audit_webhook(request: AuditRequest, background_tasks: BackgroundT
 
 @app.post("/webhook/n8n/parse")
 async def n8n_parse_webhook(doc_type: str, file_path: str, api_key: str = ""):
-    """Webhook pour parser un document depuis n8n"""
-    from mel_parser import MELParser, create_mock_parsing_result
-    
+    """Webhook pour parser un document depuis n8n (utilise UnifiedParser)"""
+    from parsers import UnifiedParser
+
     if not Path(file_path).exists():
         raise HTTPException(status_code=404, detail="File not found")
-    
-    if api_key:
-        parser = MELParser(api_key)
-        result = parser.parse_pdf(file_path)
-        output_path = OUTPUT_DIR / f"parsed_{doc_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        parser.save_parsing_result(result, str(output_path))
-        return {"output_path": str(output_path), "items_count": result.total_items}
-    else:
-        result = create_mock_parsing_result(file_path, doc_type.upper())
-        return {"items_count": result.total_items, "items": [i.to_dict() for i in result.items]}
+
+    # Utiliser le UnifiedParser consolidé
+    parser = UnifiedParser.create(api_key=api_key)
+    result = parser.parse_document(file_path, doc_type=doc_type.upper())
+
+    # Sauvegarder le résultat
+    output_path = OUTPUT_DIR / f"parsed_{doc_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    result.to_json(str(output_path))
+
+    return {
+        "output_path": str(output_path),
+        "items_count": result.total_items,
+        "backend": result.parser_backend,
+        "statistics": result.statistics
+    }
 
 
 # ============== Interface Web ==============
