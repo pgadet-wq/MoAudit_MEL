@@ -19,7 +19,7 @@ from datetime import datetime
 import logging
 
 # Import pipeline V2
-from pipeline_v2 import MoAMELPipelineV2, PipelineConfigV2
+from .pipeline_v2 import MoAMELPipelineV2, PipelineConfigV2
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("MoA_MEL_API")
