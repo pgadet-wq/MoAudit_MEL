@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoA_MEL Audit - Workflow Séquentiel</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- React 18 -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Custom styles -->
+    <style>
+        /* Loading spinner animation */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .fa-spin {
+            animation: spin 1s linear infinite;
+        }
+
+        /* Smooth transitions */
+        .transition-all {
+            transition: all 0.2s ease-in-out;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a1a1a1;
+        }
+
+        /* Table hover effect */
+        tbody tr:hover {
+            background-color: #f9fafb;
+        }
+
+        /* Editable cell hover */
+        .editable-cell:hover {
+            background-color: #fef3c7;
+            cursor: pointer;
+        }
+
+        /* Badge styles */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            border-radius: 0.25rem;
+        }
+
+        /* Popup shadow */
+        .popup-shadow {
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div id="root">
+        <!-- Loading state while React loads -->
+        <div class="flex items-center justify-center min-h-screen">
+            <div class="text-center">
+                <i class="fas fa-plane text-blue-500 text-4xl mb-4 animate-bounce"></i>
+                <p class="text-gray-600">Chargement de l'application...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load the React app -->
+    <script type="text/babel" src="/static/app.jsx"></script>
+</body>
+</html>
