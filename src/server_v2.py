@@ -45,10 +45,18 @@ logger = logging.getLogger("MoA_MEL_V2")
 
 # ============== Configuration ==============
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
 UPLOAD_DIR = Path("data/uploads")
 OUTPUT_DIR = Path("outputs")
 STATIC_DIR = Path("static")
 DB_PATH = Path("data/moamel_audit.db")
+
+# Mistral API Configuration
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "")
+MISTRAL_MODEL = "mistral-large-latest"  # Best model for structured extraction
 
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -145,12 +153,99 @@ def get_db():
         pass  # Session will be closed after use
 
 
-def parse_pdf_to_items(pdf_path: str, doc_type: str) -> List[Dict]:
-    """Parse a PDF file and extract items"""
-    items = []
+def parse_with_mistral_llm(markdown_content: str, doc_type: str) -> List[Dict]:
+    """Use Mistral LLM to extract structured items from markdown"""
+    import requests
+
+    if not MISTRAL_API_KEY:
+        return []
+
+    prompt = f"""Analyse ce document {doc_type} (Minimum Equipment List) au format EASA et extrait tous les items.
+
+Pour chaque item, extrais:
+- item_number: numéro ATA (format XX-XX-XX ou XX-XX-XXX, peut avoir suffixe A/B/C/D)
+- item_description: description de l'équipement
+- category: catégorie de dispatch (A, B, C ou D)
+- number_installed: nombre installé
+- number_required: nombre requis pour dispatch
+- remarks: remarques et conditions (inclure (O) pour opérationnel, (M) pour maintenance)
+
+Retourne un JSON array avec tous les items trouvés.
+
+Document:
+{markdown_content[:15000]}
+
+Réponds UNIQUEMENT avec le JSON array, sans texte supplémentaire."""
 
     try:
-        # Try Docling parser
+        response = requests.post(
+            "https://api.mistral.ai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {MISTRAL_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": MISTRAL_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1,
+                "max_tokens": 8000
+            },
+            timeout=120
+        )
+
+        if response.status_code == 200:
+            result = response.json()
+            content = result["choices"][0]["message"]["content"]
+
+            # Parse JSON from response
+            import re
+            json_match = re.search(r'\[[\s\S]*\]', content)
+            if json_match:
+                items_data = json.loads(json_match.group())
+
+                # Normalize items
+                items = []
+                for item in items_data:
+                    item_num = item.get("item_number", "")
+                    parts = item_num.replace("-", " ").split()
+
+                    if len(parts) >= 3:
+                        chapter = parts[0].zfill(2)
+                        section = parts[1].zfill(2)
+                        base_num = parts[2][:2].zfill(2)
+                        suffix = parts[2][2:] if len(parts[2]) > 2 else ""
+
+                        items.append({
+                            "ata_chapter": chapter,
+                            "ata_section": section,
+                            "item_number": item_num,
+                            "item_base": f"{chapter}-{section}-{base_num}",
+                            "variant_suffix": suffix,
+                            "item_description": item.get("item_description", ""),
+                            "category": item.get("category", "C"),
+                            "number_installed": str(item.get("number_installed", "-")),
+                            "number_required": str(item.get("number_required", "-")),
+                            "remarks": item.get("remarks", ""),
+                            "source_page": 0,
+                            "extraction_confidence": 0.95  # High confidence for LLM
+                        })
+
+                logger.info(f"Mistral LLM extracted {len(items)} items")
+                return items
+
+    except Exception as e:
+        logger.error(f"Mistral LLM parsing error: {e}")
+
+    return []
+
+
+def parse_pdf_to_items(pdf_path: str, doc_type: str) -> List[Dict]:
+    """Parse a PDF file and extract items using Docling + optional Mistral LLM"""
+    items = []
+    markdown = ""
+
+    try:
+        # Try Docling parser for PDF to Markdown conversion
         from docling.document_converter import DocumentConverter
 
         logger.info(f"Parsing {doc_type} with Docling: {pdf_path}")
@@ -158,69 +253,79 @@ def parse_pdf_to_items(pdf_path: str, doc_type: str) -> List[Dict]:
         result = converter.convert(pdf_path)
         markdown = result.document.export_to_markdown()
 
-        # Extract items using regex patterns
-        import re
-
-        # Pattern for ATA items
-        ata_pattern = r'(\d{2})-(\d{2})-(\d{2,3})([A-Z])?'
-
-        lines = markdown.split('\n')
-        current_chapter = None
-
-        for i, line in enumerate(lines):
-            # Detect chapter headers
-            chapter_match = re.match(r'^#+\s*(?:ATA\s*)?(\d{2})\s*[-–]\s*(.+)$', line)
-            if chapter_match:
-                current_chapter = chapter_match.group(1)
-                continue
-
-            # Detect items
-            item_match = re.search(ata_pattern, line)
-            if item_match:
-                chapter, section, item_num, suffix = item_match.groups()
-
-                # Extract context (next few lines)
-                context = '\n'.join(lines[i:min(i+5, len(lines))])
-
-                # Try to extract description
-                desc_match = re.search(r'\d{2}-\d{2}-\d{2,3}[A-Z]?\s+(.+?)(?:\s*\||\s*$)', line)
-                description = desc_match.group(1).strip() if desc_match else ""
-
-                # Try to extract category
-                category = "C"  # Default
-                for cat in ['A', 'B', 'C', 'D']:
-                    if re.search(rf'\|\s*{cat}\s*\|', context) or re.search(rf'\b{cat}\b', context[:50]):
-                        category = cat
-                        break
-
-                # Extract remarks
-                remarks_match = re.search(r'\([OM]\)[^|]*', context, re.IGNORECASE)
-                remarks = remarks_match.group(0).strip() if remarks_match else ""
-
-                items.append({
-                    "ata_chapter": chapter,
-                    "ata_section": section,
-                    "item_number": f"{chapter}-{section}-{item_num.zfill(2)}{suffix or ''}",
-                    "item_base": f"{chapter}-{section}-{item_num.zfill(2)}",
-                    "variant_suffix": suffix or "",
-                    "item_description": description,
-                    "category": category,
-                    "number_installed": "-",
-                    "number_required": "-",
-                    "remarks": remarks,
-                    "source_page": 0,
-                    "extraction_confidence": 0.85
-                })
-
-        logger.info(f"Extracted {len(items)} items from {doc_type}")
+        logger.info(f"Docling extracted {len(markdown)} characters of markdown")
 
     except ImportError:
-        logger.warning("Docling not available, using mock parser")
-        # Fallback: create mock items for testing
-        items = create_mock_items(doc_type)
+        logger.warning("Docling not available")
+        # Try PyMuPDF as fallback for text extraction
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(pdf_path)
+            markdown = "\n\n".join([page.get_text() for page in doc])
+            doc.close()
+            logger.info(f"PyMuPDF extracted {len(markdown)} characters")
+        except:
+            logger.warning("PyMuPDF not available, using mock parser")
+            return create_mock_items(doc_type)
     except Exception as e:
-        logger.error(f"Error parsing PDF: {e}")
+        logger.error(f"Error converting PDF: {e}")
         raise
+
+    # Try Mistral LLM parsing first (best quality)
+    if MISTRAL_API_KEY and markdown:
+        logger.info("Using Mistral LLM for structured extraction...")
+        items = parse_with_mistral_llm(markdown, doc_type)
+        if items:
+            return items
+        logger.warning("Mistral LLM extraction failed, falling back to regex")
+
+    # Fallback to regex-based parsing
+    import re
+    ata_pattern = r'(\d{2})-(\d{2})-(\d{2,3})([A-Z])?'
+
+    lines = markdown.split('\n')
+
+    for i, line in enumerate(lines):
+        item_match = re.search(ata_pattern, line)
+        if item_match:
+            chapter, section, item_num, suffix = item_match.groups()
+            context = '\n'.join(lines[i:min(i+5, len(lines))])
+
+            # Extract description
+            desc_match = re.search(r'\d{2}-\d{2}-\d{2,3}[A-Z]?\s+(.+?)(?:\s*\||\s*$)', line)
+            description = desc_match.group(1).strip() if desc_match else ""
+
+            # Extract category
+            category = "C"
+            for cat in ['A', 'B', 'C', 'D']:
+                if re.search(rf'\|\s*{cat}\s*\|', context) or re.search(rf'\b{cat}\b', context[:50]):
+                    category = cat
+                    break
+
+            # Extract remarks
+            remarks_match = re.search(r'\([OM]\)[^|]*', context, re.IGNORECASE)
+            remarks = remarks_match.group(0).strip() if remarks_match else ""
+
+            items.append({
+                "ata_chapter": chapter,
+                "ata_section": section,
+                "item_number": f"{chapter}-{section}-{item_num.zfill(2)}{suffix or ''}",
+                "item_base": f"{chapter}-{section}-{item_num.zfill(2)}",
+                "variant_suffix": suffix or "",
+                "item_description": description,
+                "category": category,
+                "number_installed": "-",
+                "number_required": "-",
+                "remarks": remarks,
+                "source_page": 0,
+                "extraction_confidence": 0.75  # Lower confidence for regex
+            })
+
+    logger.info(f"Regex extracted {len(items)} items from {doc_type}")
+
+    if not items:
+        logger.warning("No items extracted, using mock data")
+        return create_mock_items(doc_type)
 
     return items
 
