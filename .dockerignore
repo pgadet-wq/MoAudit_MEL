@@ -1,0 +1,50 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# Documentation
+*.md
+!requirements.txt
+
+# Temporary files
+*.log
+*.tmp
+.DS_Store
+
+# Output files (mounted as volumes)
+outputs/
+logs/
+
+# Deployment scripts (not needed in container)
+deploy/
+
+# Workflows (n8n specific)
+workflows/
