@@ -1,0 +1,201 @@
+version: '3.8'
+
+# ===========================================
+# MoAudit MEL - Production Deployment
+# ===========================================
+# Usage: docker compose -f docker-compose.prod.yml up -d
+
+services:
+  # ===========================================
+  # MoAudit API (FastAPI)
+  # ===========================================
+  moaudit-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: moaudit-api
+    env_file: .env
+    environment:
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs
+      - ./static:/app/static:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      docling-service:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - moaudit-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ===========================================
+  # Docling Service (PDF Parser)
+  # ===========================================
+  docling-service:
+    build:
+      context: ./services/docling-service
+      dockerfile: Dockerfile
+    container_name: docling-service
+    environment:
+      - GRANITE_SERVICE_URL=${GRANITE_SERVICE_URL}
+      - GRANITE_MODEL_NAME=${GRANITE_MODEL_NAME:-ibm-granite/granite-docling-258M}
+      - USE_VLM=${USE_VLM:-true}
+      - VLM_BACKEND=${VLM_BACKEND:-granite_docling_vllm}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MAX_CONCURRENT_REQUESTS=${MAX_CONCURRENT_REQUESTS:-5}
+      - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-30}
+      - RATE_LIMIT_PERIOD=${RATE_LIMIT_PERIOD:-60}
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - moaudit-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ===========================================
+  # Redis (Job Queue & Cache)
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    container_name: moaudit-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - moaudit-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # ===========================================
+  # Celery Worker (Async Tasks)
+  # ===========================================
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: moaudit-celery
+    env_file: .env
+    command: >
+      celery -A src.tasks worker
+      --loglevel=info
+      --concurrency=2
+      -Q parsing,audit,reports
+    volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - moaudit-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  # ===========================================
+  # Celery Beat (Scheduled Tasks)
+  # ===========================================
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: moaudit-celery-beat
+    env_file: .env
+    command: >
+      celery -A src.tasks beat
+      --loglevel=info
+      --pidfile=/tmp/celerybeat.pid
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - moaudit-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # ===========================================
+  # Nginx Reverse Proxy
+  # ===========================================
+  nginx:
+    image: nginx:alpine
+    container_name: moaudit-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./static:/usr/share/nginx/html/static:ro
+    depends_on:
+      - moaudit-api
+    restart: unless-stopped
+    networks:
+      - moaudit-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+# ===========================================
+# Volumes
+# ===========================================
+volumes:
+  redis-data:
+    driver: local
+
+# ===========================================
+# Networks
+# ===========================================
+networks:
+  moaudit-network:
+    driver: bridge

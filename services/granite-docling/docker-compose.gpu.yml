@@ -1,0 +1,70 @@
+version: '3.8'
+
+# ===========================================
+# Granite-Docling VLM - GPU Deployment
+# ===========================================
+# Deploy on Scaleway GPU instance (GPU-3070-S or RENDER-S)
+#
+# Usage:
+#   docker compose -f docker-compose.gpu.yml up -d
+#
+# Requirements:
+#   - NVIDIA GPU with 8GB+ VRAM
+#   - nvidia-container-toolkit installed
+#   - Docker with NVIDIA runtime
+
+services:
+  granite-docling:
+    image: vllm/vllm-openai:latest
+    container_name: granite-docling
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - HF_HOME=/root/.cache/huggingface
+      - VLLM_ATTENTION_BACKEND=FLASHINFER
+    volumes:
+      - ./model-cache:/root/.cache/huggingface
+      - ./logs:/logs
+    ports:
+      - "8000:8000"
+    command: >
+      --model ibm-granite/granite-docling-258M
+      --revision untied
+      --port 8000
+      --host 0.0.0.0
+      --max-model-len 4096
+      --gpu-memory-utilization 0.85
+      --dtype auto
+      --trust-remote-code
+      --enable-prefix-caching
+      --max-num-seqs 16
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s  # Model loading takes time
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+
+  # Optional: Prometheus metrics exporter
+  # vllm-exporter:
+  #   image: prom/node-exporter:latest
+  #   container_name: vllm-exporter
+  #   ports:
+  #     - "9100:9100"
+  #   restart: unless-stopped
+
+volumes:
+  model-cache:
