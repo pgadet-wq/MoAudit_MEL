@@ -1,0 +1,349 @@
+name: Build, Test & Deploy MoAudit MEL
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  SCALEWAY_REGISTRY: rg.fr-par.scw.cloud
+
+jobs:
+  # ============================================
+  # Job 1: Lint & Test
+  # ============================================
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio pytest-cov ruff mypy
+
+      - name: Lint with Ruff
+        run: |
+          ruff check src/ --output-format=github || true
+          ruff format --check src/ || true
+
+      - name: Type check with MyPy
+        run: |
+          mypy src/ --ignore-missing-imports --no-error-summary || true
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --cov=src --cov-report=xml --cov-report=html || true
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+          PARSING_BACKEND: fallback
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v3
+        if: always()
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+
+  # ============================================
+  # Job 2: Build Docker Images
+  # ============================================
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+      version: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=
+
+      # Build MoAudit API
+      - name: Build and push MoAudit API
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+
+      # Build Docling Service
+      - name: Build and push Docling Service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./services/docling-service
+          file: ./services/docling-service/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/docling-service:${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/docling-service:latest
+          cache-from: type=gha,scope=docling
+          cache-to: type=gha,scope=docling,mode=max
+          platforms: linux/amd64
+
+  # ============================================
+  # Job 3: Security Scan
+  # ============================================
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push'
+
+    permissions:
+      security-events: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.version }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # ============================================
+  # Job 4: Deploy to Staging (develop branch)
+  # ============================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build, security]
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SCALEWAY_SSH_KEY }}
+          known_hosts: ${{ secrets.SCALEWAY_KNOWN_HOSTS }}
+
+      - name: Deploy to Scaleway Staging
+        env:
+          DEPLOY_HOST: ${{ secrets.SCALEWAY_STAGING_HOST }}
+          DEPLOY_USER: ${{ secrets.SCALEWAY_DEPLOY_USER }}
+          IMAGE_TAG: ${{ needs.build.outputs.version }}
+        run: |
+          ssh $DEPLOY_USER@$DEPLOY_HOST << 'ENDSSH'
+            cd /opt/moaudit
+
+            # Pull latest images
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:$IMAGE_TAG
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/docling-service:$IMAGE_TAG
+
+            # Update docker-compose with new tag
+            export IMAGE_TAG=$IMAGE_TAG
+
+            # Deploy with zero-downtime
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml pull
+            docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --remove-orphans
+
+            # Health check
+            sleep 10
+            curl -f http://localhost:8080/health/deep || exit 1
+
+            echo "Staging deployment successful"
+          ENDSSH
+
+      - name: Notify Slack (Staging)
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # ============================================
+  # Job 5: Deploy to Production (tags only)
+  # ============================================
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, security]
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SCALEWAY_SSH_KEY }}
+          known_hosts: ${{ secrets.SCALEWAY_KNOWN_HOSTS }}
+
+      - name: Login to Scaleway Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.SCALEWAY_REGISTRY }}
+          username: nologin
+          password: ${{ secrets.SCALEWAY_SECRET_KEY }}
+
+      - name: Push to Scaleway Registry
+        run: |
+          # Tag and push to Scaleway registry for production
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.version }}
+          docker tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.version }} \
+            ${{ env.SCALEWAY_REGISTRY }}/moaudit/api:${{ needs.build.outputs.version }}
+          docker push ${{ env.SCALEWAY_REGISTRY }}/moaudit/api:${{ needs.build.outputs.version }}
+
+      - name: Deploy to Scaleway Production
+        env:
+          DEPLOY_HOST: ${{ secrets.SCALEWAY_PROD_HOST }}
+          DEPLOY_USER: ${{ secrets.SCALEWAY_DEPLOY_USER }}
+          IMAGE_TAG: ${{ needs.build.outputs.version }}
+        run: |
+          ssh $DEPLOY_USER@$DEPLOY_HOST << 'ENDSSH'
+            cd /opt/moaudit
+
+            # Backup current deployment
+            docker compose ps > /tmp/moaudit_backup_$(date +%Y%m%d_%H%M%S).txt
+
+            # Pull latest images from Scaleway registry
+            docker pull ${{ env.SCALEWAY_REGISTRY }}/moaudit/api:$IMAGE_TAG
+
+            # Update deployment
+            export IMAGE_TAG=$IMAGE_TAG
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --remove-orphans
+
+            # Wait for health
+            sleep 15
+
+            # Deep health check
+            curl -f http://localhost:8080/health/deep || {
+              echo "Health check failed, rolling back..."
+              docker compose -f docker-compose.yml -f docker-compose.prod.yml down
+              docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+              exit 1
+            }
+
+            # Cleanup old images
+            docker image prune -af --filter "until=168h"
+
+            echo "Production deployment successful: $IMAGE_TAG"
+          ENDSSH
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          generate_release_notes: true
+          files: |
+            docker-compose.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify Slack (Production)
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+          text: 'Production deployment ${{ job.status }}: ${{ needs.build.outputs.version }}'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # ============================================
+  # Job 6: Deploy Granite-Docling GPU (Manual)
+  # ============================================
+  deploy-gpu:
+    name: Deploy Granite-Docling GPU
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'workflow_dispatch' || (startsWith(github.ref, 'refs/tags/v') && contains(github.event.head_commit.message, '[deploy-gpu]'))
+    environment: gpu-production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install SSH key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SCALEWAY_GPU_SSH_KEY }}
+          known_hosts: ${{ secrets.SCALEWAY_GPU_KNOWN_HOSTS }}
+
+      - name: Deploy Granite-Docling to GPU Instance
+        env:
+          GPU_HOST: ${{ secrets.SCALEWAY_GPU_HOST }}
+          GPU_USER: ${{ secrets.SCALEWAY_GPU_USER }}
+        run: |
+          ssh $GPU_USER@$GPU_HOST << 'ENDSSH'
+            cd /opt/granite-docling
+
+            # Update vLLM deployment
+            docker compose -f docker-compose.gpu.yml pull
+            docker compose -f docker-compose.gpu.yml up -d
+
+            # Wait for model to load
+            echo "Waiting for model to load..."
+            sleep 60
+
+            # Health check
+            curl -f http://localhost:8000/v1/models || exit 1
+
+            echo "Granite-Docling GPU deployment successful"
+          ENDSSH

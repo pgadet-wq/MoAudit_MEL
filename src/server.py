@@ -15,6 +15,7 @@ from pathlib import Path
 import json
 import shutil
 import uuid
+import os
 from datetime import datetime
 import asyncio
 import logging
@@ -101,13 +102,189 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check pour monitoring"""
+    """Health check basique pour monitoring"""
     return {
         "status": "healthy",
         "version": "2.0.0",
         "timestamp": datetime.now().isoformat(),
         "services": get_service_urls() if config else {}
     }
+
+
+@app.get("/health/deep")
+async def deep_health_check():
+    """
+    Deep health check - verifie tous les services dependants.
+    Retourne un statut global et le detail de chaque service.
+    """
+    checks = {}
+    overall_healthy = True
+
+    # Check 1: Docling Service
+    try:
+        docling_url = config.docling.service_url if config else "http://localhost:8001"
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{docling_url}/health")
+            if response.status_code == 200:
+                checks["docling"] = {
+                    "status": "healthy",
+                    "url": docling_url,
+                    "response_time_ms": response.elapsed.total_seconds() * 1000
+                }
+            else:
+                checks["docling"] = {
+                    "status": "unhealthy",
+                    "url": docling_url,
+                    "error": f"HTTP {response.status_code}"
+                }
+                overall_healthy = False
+    except Exception as e:
+        checks["docling"] = {
+            "status": "unhealthy",
+            "url": docling_url if 'docling_url' in dir() else "unknown",
+            "error": str(e)
+        }
+        overall_healthy = False
+
+    # Check 2: Granite-Docling VLM Service
+    try:
+        granite_url = config.granite_docling.service_url if config else "http://localhost:8000/v1"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(f"{granite_url}/models")
+            if response.status_code == 200:
+                checks["granite_docling"] = {
+                    "status": "healthy",
+                    "url": granite_url,
+                    "response_time_ms": response.elapsed.total_seconds() * 1000,
+                    "models": response.json().get("data", [])
+                }
+            else:
+                checks["granite_docling"] = {
+                    "status": "unhealthy",
+                    "url": granite_url,
+                    "error": f"HTTP {response.status_code}"
+                }
+                overall_healthy = False
+    except Exception as e:
+        checks["granite_docling"] = {
+            "status": "unhealthy",
+            "url": granite_url if 'granite_url' in dir() else "unknown",
+            "error": str(e)
+        }
+        overall_healthy = False
+
+    # Check 3: Redis (if enabled)
+    if config and config.redis.enabled:
+        try:
+            import redis as redis_client
+            r = redis_client.from_url(config.redis.url, socket_timeout=2)
+            r.ping()
+            checks["redis"] = {
+                "status": "healthy",
+                "url": config.redis.url.split("@")[-1] if "@" in config.redis.url else config.redis.url
+            }
+        except Exception as e:
+            checks["redis"] = {
+                "status": "unhealthy",
+                "error": str(e)
+            }
+            overall_healthy = False
+    else:
+        checks["redis"] = {
+            "status": "disabled",
+            "message": "Redis not enabled in configuration"
+        }
+
+    # Check 4: Storage Backend
+    try:
+        if config and config.storage.backend == "local":
+            storage_path = Path(config.storage.local_path)
+            if storage_path.exists() and storage_path.is_dir():
+                checks["storage"] = {
+                    "status": "healthy",
+                    "backend": "local",
+                    "path": str(storage_path),
+                    "writable": os.access(storage_path, os.W_OK)
+                }
+            else:
+                checks["storage"] = {
+                    "status": "unhealthy",
+                    "backend": "local",
+                    "error": "Storage directory does not exist"
+                }
+                overall_healthy = False
+        elif config and config.storage.backend in ("s3", "scaleway"):
+            # Just check configuration is present
+            has_config = bool(config.storage.s3_endpoint_url and config.storage.s3_access_key)
+            checks["storage"] = {
+                "status": "healthy" if has_config else "unhealthy",
+                "backend": config.storage.backend,
+                "endpoint": config.storage.s3_endpoint_url[:30] + "..." if config.storage.s3_endpoint_url else None,
+                "bucket": config.storage.s3_bucket_name
+            }
+            if not has_config:
+                overall_healthy = False
+        else:
+            checks["storage"] = {
+                "status": "healthy",
+                "backend": "local",
+                "path": str(UPLOAD_DIR)
+            }
+    except Exception as e:
+        checks["storage"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+        overall_healthy = False
+
+    # Check 5: Database (if configured)
+    if config and config.database.mode == "postgres":
+        try:
+            import asyncpg
+            conn = await asyncpg.connect(
+                host=config.database.pg_host,
+                port=config.database.pg_port,
+                user=config.database.pg_user,
+                password=config.database.pg_password,
+                database=config.database.pg_database,
+                timeout=5
+            )
+            await conn.close()
+            checks["database"] = {
+                "status": "healthy",
+                "type": "postgres",
+                "host": config.database.pg_host
+            }
+        except Exception as e:
+            checks["database"] = {
+                "status": "unhealthy",
+                "type": "postgres",
+                "error": str(e)
+            }
+            # Don't fail overall health for optional DB
+    else:
+        checks["database"] = {
+            "status": "healthy",
+            "type": "sqlite",
+            "path": config.database.sqlite_path if config else "data/moa_mel.db"
+        }
+
+    # Build response
+    status_code = 200 if overall_healthy else 503
+    response = {
+        "status": "healthy" if overall_healthy else "degraded",
+        "version": "2.0.0",
+        "timestamp": datetime.now().isoformat(),
+        "checks": checks,
+        "summary": {
+            "total_checks": len(checks),
+            "healthy": sum(1 for c in checks.values() if c.get("status") == "healthy"),
+            "unhealthy": sum(1 for c in checks.values() if c.get("status") == "unhealthy"),
+            "disabled": sum(1 for c in checks.values() if c.get("status") == "disabled")
+        }
+    }
+
+    return JSONResponse(content=response, status_code=status_code)
 
 
 @app.get("/api/services/docling/health")
