@@ -290,6 +290,145 @@
             font-size: 0.875rem;
         }
         footer p { margin: 0.25rem 0; }
+
+        /* Upload Section Styles */
+        .upload-section {
+            background: white;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid #e2e8f0;
+        }
+        .upload-section h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .upload-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        @media (max-width: 768px) { .upload-grid { grid-template-columns: 1fr; } }
+        .upload-box {
+            border: 2px dashed #cbd5e1;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.2s;
+            cursor: pointer;
+            position: relative;
+        }
+        .upload-box:hover { border-color: #3b82f6; background: #f8fafc; }
+        .upload-box.mel { border-color: #3b82f6; }
+        .upload-box.mmel { border-color: #22c55e; }
+        .upload-box.has-file { background: #f0fdf4; border-style: solid; }
+        .upload-box.mel.has-file { background: #eff6ff; }
+        .upload-box input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+        .upload-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        .upload-label { font-weight: 600; margin-bottom: 0.25rem; }
+        .upload-hint { font-size: 0.875rem; color: #64748b; }
+        .upload-filename {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            color: #16a34a;
+            margin-top: 0.5rem;
+            word-break: break-all;
+        }
+        .upload-actions {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+        .btn-secondary {
+            background: #f1f5f9;
+            color: #475569;
+            border: 1px solid #e2e8f0;
+        }
+        .btn-secondary:hover { background: #e2e8f0; }
+        .progress-container {
+            flex: 1;
+            min-width: 200px;
+            display: none;
+        }
+        .progress-container.show { display: block; }
+        .progress-bar {
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 0.5rem;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #22c55e);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+        .progress-text {
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+        .status-message {
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            margin-top: 1rem;
+            display: none;
+        }
+        .status-message.show { display: block; }
+        .status-message.info { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+        .status-message.success { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+        .status-message.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+
+        /* Tabs for switching views */
+        .tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 0.5rem;
+        }
+        .tab {
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem 0.375rem 0 0;
+            cursor: pointer;
+            font-weight: 500;
+            color: #64748b;
+            transition: all 0.2s;
+        }
+        .tab:hover { color: #3b82f6; }
+        .tab.active { color: #3b82f6; background: #eff6ff; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
     </style>
 </head>
 <body>
@@ -307,6 +446,52 @@
     </header>
 
     <main>
+        <!-- Tabs -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('upload')">Nouvel Audit</div>
+            <div class="tab" onclick="switchTab('results')">Resultats</div>
+        </div>
+
+        <!-- Upload Tab -->
+        <div id="uploadTab" class="tab-content active">
+            <div class="upload-section">
+                <h2>Lancer un nouvel audit MEL/MMEL</h2>
+                <div class="upload-grid">
+                    <div class="upload-box mel" id="melUploadBox">
+                        <input type="file" id="melFile" accept=".pdf" onchange="handleFileSelect('mel', this)">
+                        <div class="upload-icon">📘</div>
+                        <div class="upload-label">Document MEL</div>
+                        <div class="upload-hint">Glissez ou cliquez pour uploader (PDF)</div>
+                        <div class="upload-filename" id="melFilename"></div>
+                    </div>
+                    <div class="upload-box mmel" id="mmelUploadBox">
+                        <input type="file" id="mmelFile" accept=".pdf" onchange="handleFileSelect('mmel', this)">
+                        <div class="upload-icon">📗</div>
+                        <div class="upload-label">Document MMEL</div>
+                        <div class="upload-hint">Glissez ou cliquez pour uploader (PDF)</div>
+                        <div class="upload-filename" id="mmelFilename"></div>
+                    </div>
+                </div>
+                <div class="upload-actions">
+                    <button class="btn btn-primary" id="startAuditBtn" onclick="startFullAudit()" disabled>
+                        Lancer l'audit complet
+                    </button>
+                    <button class="btn btn-secondary" onclick="resetUpload()">
+                        Reinitialiser
+                    </button>
+                    <div class="progress-container" id="progressContainer">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                        </div>
+                        <div class="progress-text" id="progressText">Preparation...</div>
+                    </div>
+                </div>
+                <div class="status-message" id="statusMessage"></div>
+            </div>
+        </div>
+
+        <!-- Results Tab -->
+        <div id="resultsTab" class="tab-content">
         <div class="doc-info">
             <div style="display: flex; gap: 3rem; flex-wrap: wrap;">
                 <div class="doc-item">
@@ -381,8 +566,9 @@
 
         <footer>
             <p>MoA_MEL Audit PoC — WingMate™ by OPS Insight</p>
-            <p>Powered by Mistral AI 🇫🇷 • Infrastructure Scaleway 🇪🇺</p>
+            <p>Powered by Mistral AI • Infrastructure Scaleway</p>
         </footer>
+        </div><!-- End of resultsTab -->
     </main>
 
     <script>
@@ -570,6 +756,212 @@
             verdictFilter.addEventListener('change', applyFilters);
         }
 
+        // ============== Upload & Audit Functions ==============
+
+        let uploadedFiles = { mel: null, mmel: null };
+        let currentAuditJobId = null;
+        let pollingInterval = null;
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+
+            if (tabName === 'upload') {
+                document.querySelector('.tab:nth-child(1)').classList.add('active');
+                document.getElementById('uploadTab').classList.add('active');
+            } else {
+                document.querySelector('.tab:nth-child(2)').classList.add('active');
+                document.getElementById('resultsTab').classList.add('active');
+            }
+        }
+
+        function handleFileSelect(type, input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            uploadedFiles[type] = file;
+            const box = document.getElementById(type + 'UploadBox');
+            const filename = document.getElementById(type + 'Filename');
+
+            box.classList.add('has-file');
+            filename.textContent = file.name;
+
+            updateStartButton();
+        }
+
+        function updateStartButton() {
+            const btn = document.getElementById('startAuditBtn');
+            btn.disabled = !(uploadedFiles.mel && uploadedFiles.mmel);
+        }
+
+        function resetUpload() {
+            uploadedFiles = { mel: null, mmel: null };
+            document.getElementById('melFile').value = '';
+            document.getElementById('mmelFile').value = '';
+            document.getElementById('melFilename').textContent = '';
+            document.getElementById('mmelFilename').textContent = '';
+            document.getElementById('melUploadBox').classList.remove('has-file');
+            document.getElementById('mmelUploadBox').classList.remove('has-file');
+            document.getElementById('progressContainer').classList.remove('show');
+            document.getElementById('statusMessage').classList.remove('show');
+            updateStartButton();
+
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+        }
+
+        function showStatus(message, type) {
+            const el = document.getElementById('statusMessage');
+            el.textContent = message;
+            el.className = 'status-message show ' + type;
+        }
+
+        function updateProgress(percent, text) {
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressText').textContent = text;
+        }
+
+        async function startFullAudit() {
+            if (!uploadedFiles.mel || !uploadedFiles.mmel) {
+                showStatus('Veuillez uploader les deux documents (MEL et MMEL)', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('startAuditBtn');
+            btn.disabled = true;
+            document.getElementById('progressContainer').classList.add('show');
+            updateProgress(5, 'Upload des fichiers...');
+
+            try {
+                // Create FormData with both files
+                const formData = new FormData();
+                formData.append('mel_file', uploadedFiles.mel);
+                formData.append('mmel_file', uploadedFiles.mmel);
+                formData.append('aircraft_msn', '0');
+                formData.append('operation_type', 'CAT');
+
+                // Start full audit
+                const response = await fetch('/api/audit/full', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Erreur lors du lancement de l\'audit');
+                }
+
+                const result = await response.json();
+                currentAuditJobId = result.job_id;
+
+                showStatus('Audit demarre - Job ID: ' + currentAuditJobId, 'info');
+                updateProgress(10, 'Parsing des documents en cours...');
+
+                // Start polling for status
+                pollingInterval = setInterval(checkAuditStatus, 3000);
+
+            } catch (error) {
+                showStatus('Erreur: ' + error.message, 'error');
+                btn.disabled = false;
+                document.getElementById('progressContainer').classList.remove('show');
+            }
+        }
+
+        async function checkAuditStatus() {
+            if (!currentAuditJobId) return;
+
+            try {
+                const response = await fetch('/api/audit/status/' + currentAuditJobId);
+                if (!response.ok) throw new Error('Erreur de statut');
+
+                const status = await response.json();
+
+                updateProgress(status.progress, status.message);
+
+                if (status.status === 'completed') {
+                    clearInterval(pollingInterval);
+                    pollingInterval = null;
+                    showStatus('Audit termine avec succes!', 'success');
+
+                    // Load results and switch to results tab
+                    if (status.result) {
+                        loadAuditResults(status.result);
+                        setTimeout(() => switchTab('results'), 1500);
+                    }
+
+                    document.getElementById('startAuditBtn').disabled = false;
+
+                } else if (status.status === 'failed') {
+                    clearInterval(pollingInterval);
+                    pollingInterval = null;
+                    showStatus('Echec de l\'audit: ' + status.message, 'error');
+                    document.getElementById('startAuditBtn').disabled = false;
+                }
+
+            } catch (error) {
+                console.error('Polling error:', error);
+            }
+        }
+
+        function loadAuditResults(result) {
+            // Update the auditData with new results
+            if (result.summary) {
+                auditData.summary = result.summary;
+            }
+            if (result.severity_breakdown) {
+                auditData.severity_breakdown = result.severity_breakdown;
+            }
+            if (result.comparisons) {
+                auditData.comparisons = result.comparisons;
+            }
+
+            // Update document names in header
+            const melName = uploadedFiles.mel ? uploadedFiles.mel.name : 'MEL Document';
+            const mmelName = uploadedFiles.mmel ? uploadedFiles.mmel.name : 'MMEL Document';
+
+            const docInfo = document.querySelector('.doc-info');
+            if (docInfo) {
+                const melSpan = docInfo.querySelector('.doc-item:first-child .doc-name');
+                const mmelSpan = docInfo.querySelector('.doc-item:last-child .doc-name');
+                if (melSpan) melSpan.textContent = melName;
+                if (mmelSpan) mmelSpan.textContent = mmelName;
+            }
+
+            // Update run ID
+            const runIdSpan = document.querySelector('.run-id');
+            if (runIdSpan && result.run_id) {
+                runIdSpan.textContent = 'Run #' + result.run_id;
+            }
+
+            // Re-render all components
+            renderSummaryCards();
+            renderDonutChart();
+            renderBarChart();
+            renderTable(auditData.comparisons);
+        }
+
+        // Check API capabilities on load
+        async function checkCapabilities() {
+            try {
+                const response = await fetch('/api/capabilities');
+                const caps = await response.json();
+
+                if (!caps.pdf_parsing_available) {
+                    showStatus('Attention: Le parsing PDF n\'est pas disponible (mistralai non installe)', 'error');
+                    document.getElementById('startAuditBtn').disabled = true;
+                } else if (!caps.mistral_configured) {
+                    showStatus('Attention: MISTRAL_API_KEY non configure', 'error');
+                    document.getElementById('startAuditBtn').disabled = true;
+                }
+            } catch (e) {
+                console.log('Could not check capabilities:', e);
+            }
+        }
+
+        // Initialize
+        checkCapabilities();
         init();
     </script>
 </body>

@@ -14,9 +14,9 @@ import logging
 import sys
 
 # Import des modules
-from mel_parser import MELParser, create_mock_parsing_result
-from mel_indexer import MELIndexer, IndexingResult
-from mel_comparator import MELComparator, AuditResult
+from .mel_parser import MELParser, create_mock_parsing_result
+from .mel_indexer import MELIndexer, IndexingResult
+from .mel_comparator import MELComparator, AuditResult
 
 logging.basicConfig(
     level=logging.INFO,
