@@ -1,0 +1,252 @@
+# MoAudit MEL - Full Stack Deployment
+# ====================================
+# Deploy with: docker-compose --profile <profile> up -d
+#
+# Profiles:
+#   - dev:        Local development (no GPU, basic parsing)
+#   - cpu:        Production without GPU (slower VLM inference)
+#   - gpu:        Production with GPU (recommended)
+#   - scaleway:   Optimized for Scaleway cloud
+
+version: '3.8'
+
+services:
+  # ===========================================================================
+  # Core Services
+  # ===========================================================================
+
+  # MoAudit API Backend
+  moaudit-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: moaudit-api:latest
+    container_name: moaudit-api
+    ports:
+      - "8080:8080"
+    environment:
+      - MISTRAL_API_KEY=${MISTRAL_API_KEY}
+      - DOCLING_SERVICE_URL=http://docling-service:8001
+      - GRANITE_DOCLING_URL=http://granite-docling:8000/v1
+      - PARSING_BACKEND=remote_docling
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_ENABLED=true
+      - STORAGE_BACKEND=local
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME:-moaudit-documents}
+    volumes:
+      - ./data:/app/data
+      - ./outputs:/app/outputs
+      - ./static:/app/static
+    depends_on:
+      - redis
+      - docling-service
+    networks:
+      - moaudit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Docling Service (Document Conversion API)
+  docling-service:
+    build:
+      context: ./services/docling-service
+      dockerfile: Dockerfile
+    image: docling-service:latest
+    container_name: docling-service
+    ports:
+      - "8001:8001"
+    environment:
+      - DOCLING_HOST=0.0.0.0
+      - DOCLING_PORT=8001
+      - DOCLING_VLM_BACKEND=granite_docling_vllm
+      - DOCLING_GRANITE_DOCLING_URL=http://granite-docling:8000/v1
+      - DOCLING_ENABLE_OCR=true
+      - DOCLING_ENABLE_TABLE_STRUCTURE=true
+      - DOCLING_USE_VLM=true
+      - DOCLING_LOCAL_STORAGE_PATH=/tmp/docling-uploads
+    volumes:
+      - docling-uploads:/tmp/docling-uploads
+      - docling-models:/root/.cache/docling/models
+    networks:
+      - moaudit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Redis (Job Queue & Cache)
+  redis:
+    image: redis:7-alpine
+    container_name: moaudit-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - moaudit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ===========================================================================
+  # GPU Profile: Granite-Docling with vLLM (Production)
+  # ===========================================================================
+
+  granite-docling:
+    build:
+      context: ./services/granite-docling
+      dockerfile: Dockerfile
+    image: granite-docling-vllm:latest
+    container_name: granite-docling
+    profiles:
+      - gpu
+      - scaleway
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_NAME=ibm-granite/granite-docling-258M
+      - MODEL_REVISION=untied
+      - PORT=8000
+      - MAX_MODEL_LEN=8192
+      - GPU_MEMORY_UTILIZATION=0.85
+      - DTYPE=auto
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - moaudit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # ===========================================================================
+  # CPU Profile: Granite-Docling with Transformers (Dev/No GPU)
+  # ===========================================================================
+
+  granite-docling-cpu:
+    build:
+      context: ./services/granite-docling
+      dockerfile: Dockerfile.cpu
+    image: granite-docling-cpu:latest
+    container_name: granite-docling-cpu
+    profiles:
+      - cpu
+      - dev
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_NAME=ibm-granite/granite-docling-258M
+      - PORT=8000
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+    networks:
+      - moaudit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 180s
+
+  # ===========================================================================
+  # Optional: PostgreSQL (Production persistence)
+  # ===========================================================================
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: moaudit-postgres
+    profiles:
+      - production
+      - scaleway
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=${PG_USER:-moaudit}
+      - POSTGRES_PASSWORD=${PG_PASSWORD:-moaudit_secret}
+      - POSTGRES_DB=${PG_DATABASE:-moaudit}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - moaudit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-moaudit}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # Optional: Nginx Reverse Proxy (Production)
+  # ===========================================================================
+
+  nginx:
+    image: nginx:alpine
+    container_name: moaudit-nginx
+    profiles:
+      - production
+      - scaleway
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./static:/usr/share/nginx/html/static:ro
+      - nginx-certs:/etc/nginx/certs
+    depends_on:
+      - moaudit-api
+    networks:
+      - moaudit-network
+    restart: unless-stopped
+
+# ===========================================================================
+# Networks
+# ===========================================================================
+
+networks:
+  moaudit-network:
+    driver: bridge
+    name: moaudit-network
+
+# ===========================================================================
+# Volumes
+# ===========================================================================
+
+volumes:
+  redis-data:
+    driver: local
+  docling-uploads:
+    driver: local
+  docling-models:
+    driver: local
+  huggingface-cache:
+    driver: local
+  postgres-data:
+    driver: local
+  nginx-certs:
+    driver: local

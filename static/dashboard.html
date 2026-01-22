@@ -7,14 +7,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
+        body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             background: linear-gradient(135deg, #f8fafc 0%, #e0f2fe 100%);
             min-height: 100vh;
             color: #1e293b;
         }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
-        
+
         header {
             background: white;
             border-bottom: 1px solid #e2e8f0;
@@ -42,21 +42,215 @@
         }
         .header-title h1 { font-size: 1.25rem; font-weight: 700; }
         .header-title p { font-size: 0.875rem; color: #64748b; }
-        .run-id {
-            font-family: 'JetBrains Mono', monospace;
-            background: #f1f5f9;
-            padding: 0.25rem 0.75rem;
-            border-radius: 0.375rem;
-            font-size: 0.75rem;
-            color: #475569;
+        .nav-tabs {
+            display: flex;
+            gap: 0.5rem;
         }
-        
+        .nav-tab {
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            border: none;
+            background: transparent;
+            color: #64748b;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .nav-tab:hover { background: #f1f5f9; }
+        .nav-tab.active { background: #3b82f6; color: white; }
+
         main {
             max-width: 1400px;
             margin: 0 auto;
             padding: 2rem 1.5rem;
         }
-        
+
+        /* Upload Section */
+        .upload-section {
+            background: white;
+            border-radius: 0.75rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 1px solid #e2e8f0;
+        }
+        .upload-section h2 {
+            font-size: 1.25rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .upload-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        @media (max-width: 768px) { .upload-grid { grid-template-columns: 1fr; } }
+
+        .upload-box {
+            border: 2px dashed #e2e8f0;
+            border-radius: 0.75rem;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.2s;
+            cursor: pointer;
+            position: relative;
+        }
+        .upload-box:hover { border-color: #3b82f6; background: #f8fafc; }
+        .upload-box.dragover { border-color: #3b82f6; background: #eff6ff; }
+        .upload-box.has-file { border-color: #22c55e; background: #f0fdf4; border-style: solid; }
+        .upload-box.mel { border-color: #3b82f6; }
+        .upload-box.mmel { border-color: #22c55e; }
+        .upload-box input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        .upload-label {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .upload-hint {
+            font-size: 0.875rem;
+            color: #64748b;
+        }
+        .upload-filename {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.875rem;
+            color: #16a34a;
+            margin-top: 0.5rem;
+            display: none;
+        }
+        .upload-box.has-file .upload-filename { display: block; }
+
+        .upload-options {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+            background: #f8fafc;
+            border-radius: 0.5rem;
+        }
+        .option-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .option-group label {
+            font-size: 0.75rem;
+            color: #64748b;
+            font-weight: 500;
+        }
+        .option-group select, .option-group input {
+            padding: 0.5rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            min-width: 150px;
+        }
+
+        .upload-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+        }
+        .btn-primary:hover { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); }
+        .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
+        .btn-secondary {
+            background: white;
+            color: #374151;
+            border: 1px solid #e2e8f0;
+        }
+        .btn-secondary:hover { background: #f8fafc; }
+
+        /* Progress Section */
+        .progress-section {
+            background: white;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid #e2e8f0;
+            display: none;
+        }
+        .progress-section.active { display: block; }
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        .progress-title {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .progress-status {
+            font-size: 0.875rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+        }
+        .progress-status.pending { background: #f1f5f9; color: #64748b; }
+        .progress-status.processing { background: #dbeafe; color: #2563eb; }
+        .progress-status.completed { background: #dcfce7; color: #16a34a; }
+        .progress-status.failed { background: #fee2e2; color: #dc2626; }
+
+        .progress-bar-container {
+            height: 8px;
+            background: #f1f5f9;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 1rem;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #2563eb);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        .progress-steps {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            color: #64748b;
+        }
+        .progress-step {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+        .progress-step.active { color: #3b82f6; font-weight: 500; }
+        .progress-step.completed { color: #16a34a; }
+
+        /* Results Section (from original) */
+        .results-section { display: none; }
+        .results-section.active { display: block; }
+
         .doc-info {
             background: white;
             border-radius: 0.75rem;
@@ -75,8 +269,15 @@
         .doc-dot.mmel { background: #22c55e; }
         .doc-label { color: #64748b; font-size: 0.875rem; }
         .doc-name { font-weight: 500; }
-        .timestamp { color: #64748b; font-size: 0.875rem; }
-        
+        .run-id {
+            font-family: 'JetBrains Mono', monospace;
+            background: #f1f5f9;
+            padding: 0.25rem 0.75rem;
+            border-radius: 0.375rem;
+            font-size: 0.75rem;
+            color: #475569;
+        }
+
         .summary-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
@@ -85,7 +286,7 @@
         }
         @media (max-width: 1200px) { .summary-grid { grid-template-columns: repeat(3, 1fr); } }
         @media (max-width: 768px) { .summary-grid { grid-template-columns: repeat(2, 1fr); } }
-        
+
         .summary-card {
             background: white;
             border-radius: 0.75rem;
@@ -97,7 +298,7 @@
         .summary-card .label { font-size: 0.875rem; color: #64748b; font-weight: 500; }
         .summary-card .value { font-size: 2rem; font-weight: 700; margin-top: 0.25rem; }
         .summary-card .subtitle { font-size: 0.75rem; color: #94a3b8; margin-top: 0.25rem; }
-        
+
         .charts-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
@@ -105,7 +306,7 @@
             margin-bottom: 2rem;
         }
         @media (max-width: 900px) { .charts-grid { grid-template-columns: 1fr; } }
-        
+
         .chart-card {
             background: white;
             border-radius: 0.75rem;
@@ -113,14 +314,14 @@
             border: 1px solid #e2e8f0;
         }
         .chart-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; }
-        
+
         .bar-chart { display: flex; flex-direction: column; gap: 0.75rem; }
         .bar-item { display: flex; align-items: center; gap: 0.75rem; }
         .bar-label { width: 100px; font-size: 0.875rem; color: #475569; }
         .bar-container { flex: 1; height: 24px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
         .bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; }
         .bar-value { font-size: 0.75rem; font-weight: 600; color: white; }
-        
+
         .donut-container { display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; }
         .donut-chart { position: relative; width: 180px; height: 180px; }
         .donut-chart svg { transform: rotate(-90deg); }
@@ -135,7 +336,7 @@
         .donut-legend { display: flex; flex-direction: column; gap: 0.5rem; }
         .legend-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; }
         .legend-dot { width: 12px; height: 12px; border-radius: 3px; }
-        
+
         .filters {
             background: white;
             border-radius: 0.75rem;
@@ -173,7 +374,7 @@
             cursor: pointer;
         }
         .item-count { font-size: 0.875rem; color: #64748b; }
-        
+
         .table-container {
             background: white;
             border-radius: 0.75rem;
@@ -194,20 +395,20 @@
         th.center { text-align: center; }
         th.mel { color: #3b82f6; }
         th.mmel { color: #22c55e; }
-        
+
         tbody tr.data-row { border-bottom: 1px solid #f1f5f9; cursor: pointer; transition: background 0.15s; }
         tbody tr.data-row:hover { background: #f8fafc; }
         tbody tr.data-row.expanded { background: #f8fafc; }
         td { padding: 0.875rem 1rem; font-size: 0.875rem; }
         td.center { text-align: center; }
         td.mono { font-family: 'JetBrains Mono', monospace; font-weight: 500; }
-        
+
         .expand-icon { color: #94a3b8; margin-right: 0.5rem; transition: transform 0.2s; display: inline-block; }
         .expanded .expand-icon { transform: rotate(90deg); }
         .description { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .category { font-weight: 700; font-size: 1.1rem; }
         .category.mismatch { color: #dc2626; }
-        
+
         .badge {
             display: inline-flex;
             align-items: center;
@@ -224,7 +425,7 @@
         .badge-missing-mmel { background: #f3f4f6; color: #6b7280; }
         .badge-mismatch { background: #ede9fe; color: #7c3aed; }
         .badge-deviation { background: #cffafe; color: #0891b2; }
-        
+
         .severity {
             display: inline-flex;
             align-items: center;
@@ -238,7 +439,7 @@
         .severity-medium { background: #fef3c7; color: #d97706; }
         .severity-warning { background: #fef9c3; color: #ca8a04; }
         .severity-info { background: #dcfce7; color: #16a34a; }
-        
+
         .expanded-content {
             padding: 1.5rem;
             background: #f8fafc;
@@ -272,7 +473,7 @@
         .expanded-box .label { font-size: 0.75rem; color: #64748b; }
         .expanded-box .value { font-weight: 500; margin-top: 0.25rem; }
         .expanded-box .value.large { font-size: 1.5rem; font-weight: 700; }
-        
+
         .alert-box {
             margin-top: 1rem;
             padding: 0.75rem 1rem;
@@ -282,7 +483,50 @@
         }
         .alert-box.critical { background: #fee2e2; color: #dc2626; border: 1px solid #fecaca; }
         .alert-box.warning { background: #fef9c3; color: #ca8a04; border: 1px solid #fde047; }
-        
+
+        /* HITL Actions */
+        .hitl-actions {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            gap: 0.5rem;
+        }
+        .btn-sm {
+            padding: 0.5rem 1rem;
+            font-size: 0.75rem;
+        }
+        .btn-approve { background: #16a34a; color: white; }
+        .btn-approve:hover { background: #15803d; }
+        .btn-reject { background: #dc2626; color: white; }
+        .btn-reject:hover { background: #b91c1c; }
+        .btn-escalate { background: #7c3aed; color: white; }
+        .btn-escalate:hover { background: #6d28d9; }
+
+        /* Service Status */
+        .service-status {
+            display: flex;
+            gap: 1rem;
+            padding: 0.75rem 1rem;
+            background: #f8fafc;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            font-size: 0.75rem;
+        }
+        .service-item {
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+        }
+        .service-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        .service-dot.online { background: #22c55e; }
+        .service-dot.offline { background: #ef4444; }
+        .service-dot.unknown { background: #94a3b8; }
+
         footer {
             text-align: center;
             padding: 2rem;
@@ -290,6 +534,47 @@
             font-size: 0.875rem;
         }
         footer p { margin: 0.25rem 0; }
+
+        /* Loading Spinner */
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f4f6;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Toast notifications */
+        .toast-container {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        .toast {
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            background: white;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            animation: slideIn 0.3s ease;
+        }
+        .toast.success { border-left: 4px solid #22c55e; }
+        .toast.error { border-left: 4px solid #ef4444; }
+        .toast.info { border-left: 4px solid #3b82f6; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -299,163 +584,490 @@
                 <div class="logo">MoA_MEL</div>
                 <div class="header-title">
                     <h1>Audit MEL/MMEL</h1>
-                    <p>Rapport d'écarts</p>
+                    <p>Comparaison automatisée</p>
                 </div>
             </div>
-            <span class="run-id">Run #20260102_143052</span>
+            <div class="nav-tabs">
+                <button class="nav-tab active" onclick="showTab('upload')">Upload</button>
+                <button class="nav-tab" onclick="showTab('results')" id="resultsTab">Resultats</button>
+            </div>
         </div>
     </header>
 
     <main>
-        <div class="doc-info">
-            <div style="display: flex; gap: 3rem; flex-wrap: wrap;">
-                <div class="doc-item">
-                    <div class="doc-dot mel"></div>
-                    <span class="doc-label">MEL:</span>
-                    <span class="doc-name">Sample_Airline_A320_MEL_Rev15.pdf</span>
+        <!-- Service Status -->
+        <div class="service-status" id="serviceStatus">
+            <div class="service-item">
+                <span class="service-dot unknown" id="apiStatus"></span>
+                <span>API MoAudit</span>
+            </div>
+            <div class="service-item">
+                <span class="service-dot unknown" id="doclingStatus"></span>
+                <span>Docling Service</span>
+            </div>
+            <div class="service-item">
+                <span class="service-dot unknown" id="graniteStatus"></span>
+                <span>Granite-Docling VLM</span>
+            </div>
+        </div>
+
+        <!-- Upload Section -->
+        <section class="upload-section" id="uploadSection">
+            <h2>Nouveau Audit MEL/MMEL</h2>
+
+            <div class="upload-grid">
+                <div class="upload-box mel" id="melUploadBox">
+                    <input type="file" id="melFile" accept=".pdf" onchange="handleFileSelect('mel', this)">
+                    <div class="upload-icon">MEL</div>
+                    <div class="upload-label">Document MEL (Operateur)</div>
+                    <div class="upload-hint">Glissez-deposez ou cliquez pour selectionner</div>
+                    <div class="upload-filename" id="melFilename"></div>
                 </div>
-                <div class="doc-item">
-                    <div class="doc-dot mmel"></div>
-                    <span class="doc-label">MMEL:</span>
-                    <span class="doc-name">A320_MMEL_Rev42_EASA.pdf</span>
+                <div class="upload-box mmel" id="mmelUploadBox">
+                    <input type="file" id="mmelFile" accept=".pdf" onchange="handleFileSelect('mmel', this)">
+                    <div class="upload-icon">MMEL</div>
+                    <div class="upload-label">Document MMEL (Reference)</div>
+                    <div class="upload-hint">Glissez-deposez ou cliquez pour selectionner</div>
+                    <div class="upload-filename" id="mmelFilename"></div>
                 </div>
             </div>
-            <div class="timestamp">🕐 02/01/2026 14:30:52</div>
-        </div>
 
-        <div class="summary-grid" id="summaryCards"></div>
-
-        <div class="charts-grid">
-            <div class="chart-card">
-                <h3>Distribution des Verdicts</h3>
-                <div class="donut-container">
-                    <div class="donut-chart" id="donutChart"></div>
-                    <div class="donut-legend" id="donutLegend"></div>
+            <div class="upload-options">
+                <div class="option-group">
+                    <label>Type Aeronef</label>
+                    <select id="aircraftType">
+                        <option value="A320-214">Airbus A320-214</option>
+                        <option value="A320neo">Airbus A320neo</option>
+                        <option value="A321-200">Airbus A321-200</option>
+                        <option value="B737-800">Boeing 737-800</option>
+                        <option value="B737MAX">Boeing 737 MAX</option>
+                    </select>
+                </div>
+                <div class="option-group">
+                    <label>MSN (optionnel)</label>
+                    <input type="text" id="msnInput" placeholder="ex: 1280">
+                </div>
+                <div class="option-group">
+                    <label>Type Operations</label>
+                    <select id="operationType">
+                        <option value="CAT">CAT (Commercial Air Transport)</option>
+                        <option value="SPO">SPO (Specialized Operations)</option>
+                        <option value="NCO">NCO (Non-Commercial)</option>
+                        <option value="NCC">NCC (Non-Commercial Complex)</option>
+                    </select>
+                </div>
+                <div class="option-group">
+                    <label>Operateur</label>
+                    <input type="text" id="operatorName" placeholder="Nom compagnie">
                 </div>
             </div>
-            <div class="chart-card">
-                <h3>Distribution par Sévérité</h3>
-                <div class="bar-chart" id="barChart"></div>
-            </div>
-        </div>
 
-        <div class="filters">
-            <div class="search-box">
-                <span>🔍</span>
-                <input type="text" id="searchInput" placeholder="Rechercher ATA, Item ou Description...">
+            <div class="upload-actions">
+                <button class="btn btn-primary" id="startAuditBtn" onclick="startAudit()" disabled>
+                    Lancer l'Audit
+                </button>
+                <button class="btn btn-secondary" onclick="resetForm()">
+                    Reinitialiser
+                </button>
             </div>
-            <select class="filter-select" id="severityFilter">
-                <option value="all">Toutes Sévérités</option>
-                <option value="critical">Critique</option>
-                <option value="high">Élevé</option>
-                <option value="medium">Moyen</option>
-                <option value="warning">Attention</option>
-                <option value="info">Info</option>
-            </select>
-            <select class="filter-select" id="verdictFilter">
-                <option value="all">Tous Verdicts</option>
-                <option value="COMPLIANT">Conforme</option>
-                <option value="MORE_RESTRICTIVE">Plus Restrictif</option>
-                <option value="LESS_RESTRICTIVE">Moins Restrictif</option>
-                <option value="MISSING_IN_MEL">Absent MEL</option>
-            </select>
-            <span class="item-count" id="itemCount">12 / 12 items</span>
-        </div>
+        </section>
 
-        <div class="table-container">
-            <table>
-                <thead>
-                    <tr>
-                        <th>ATA</th>
-                        <th>Item</th>
-                        <th>Description</th>
-                        <th class="center mel">MEL Cat.</th>
-                        <th class="center mmel">MMEL Cat.</th>
-                        <th>Verdict</th>
-                        <th>Sévérité</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody"></tbody>
-            </table>
-        </div>
+        <!-- Progress Section -->
+        <section class="progress-section" id="progressSection">
+            <div class="progress-header">
+                <div class="progress-title">
+                    <div class="spinner" id="progressSpinner"></div>
+                    <span id="progressTitle">Traitement en cours...</span>
+                </div>
+                <span class="progress-status processing" id="progressStatus">En cours</span>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-bar" id="progressBar"></div>
+            </div>
+            <div class="progress-steps">
+                <span class="progress-step" id="step1">Upload fichiers</span>
+                <span class="progress-step" id="step2">Parsing MEL</span>
+                <span class="progress-step" id="step3">Parsing MMEL</span>
+                <span class="progress-step" id="step4">Comparaison</span>
+                <span class="progress-step" id="step5">Rapport</span>
+            </div>
+        </section>
+
+        <!-- Results Section -->
+        <section class="results-section" id="resultsSection">
+            <div class="doc-info">
+                <div style="display: flex; gap: 3rem; flex-wrap: wrap;">
+                    <div class="doc-item">
+                        <div class="doc-dot mel"></div>
+                        <span class="doc-label">MEL:</span>
+                        <span class="doc-name" id="resultMelName">-</span>
+                    </div>
+                    <div class="doc-item">
+                        <div class="doc-dot mmel"></div>
+                        <span class="doc-label">MMEL:</span>
+                        <span class="doc-name" id="resultMmelName">-</span>
+                    </div>
+                </div>
+                <span class="run-id" id="resultRunId">-</span>
+            </div>
+
+            <div class="summary-grid" id="summaryCards"></div>
+
+            <div class="charts-grid">
+                <div class="chart-card">
+                    <h3>Distribution des Verdicts</h3>
+                    <div class="donut-container">
+                        <div class="donut-chart" id="donutChart"></div>
+                        <div class="donut-legend" id="donutLegend"></div>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <h3>Distribution par Severite</h3>
+                    <div class="bar-chart" id="barChart"></div>
+                </div>
+            </div>
+
+            <div class="filters">
+                <div class="search-box">
+                    <span>Recherche</span>
+                    <input type="text" id="searchInput" placeholder="ATA, Item ou Description...">
+                </div>
+                <select class="filter-select" id="severityFilter">
+                    <option value="all">Toutes Severites</option>
+                    <option value="critical">Critique</option>
+                    <option value="high">Eleve</option>
+                    <option value="medium">Moyen</option>
+                    <option value="warning">Attention</option>
+                    <option value="info">Info</option>
+                </select>
+                <select class="filter-select" id="verdictFilter">
+                    <option value="all">Tous Verdicts</option>
+                    <option value="COMPLIANT">Conforme</option>
+                    <option value="MORE_RESTRICTIVE">Plus Restrictif</option>
+                    <option value="LESS_RESTRICTIVE">Moins Restrictif</option>
+                    <option value="MISSING_IN_MEL">Absent MEL</option>
+                </select>
+                <span class="item-count" id="itemCount">0 items</span>
+            </div>
+
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ATA</th>
+                            <th>Item</th>
+                            <th>Description</th>
+                            <th class="center mel">MEL Cat.</th>
+                            <th class="center mmel">MMEL Cat.</th>
+                            <th>Verdict</th>
+                            <th>Severite</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </section>
 
         <footer>
-            <p>MoA_MEL Audit PoC — WingMate™ by OPS Insight</p>
-            <p>Powered by Mistral AI 🇫🇷 • Infrastructure Scaleway 🇪🇺</p>
+            <p>MoA_MEL Audit v2.0 - WingMate by OPS Insight</p>
+            <p>Powered by Docling + Granite-Docling | Infrastructure Scaleway</p>
         </footer>
     </main>
 
+    <div class="toast-container" id="toastContainer"></div>
+
     <script>
-        const auditData = {
-            summary: { total: 12, compliant: 5, more_restrictive: 2, less_restrictive: 2, missing_in_mel: 2, other_deviations: 1, hitl_required: 5, compliance_rate: 58.33 },
-            severity_breakdown: { critical: 2, high: 1, medium: 1, warning: 2, info: 6 },
-            comparisons: [
-                { ata_chapter: "24", item_number: "24-10-01", item_description: "Main Battery", verdict: "LESS_RESTRICTIVE", severity: "critical", mel_category: "B", mmel_category: "A", mel_remarks: "(M) Maintenance verification required.", mmel_remarks: "Go item - must be operative for dispatch.", hitl_reason: "CRITICAL: MEL category B is less restrictive than MMEL A" },
-                { ata_chapter: "27", item_number: "27-30-01", item_description: "Aileron Trim System", verdict: "LESS_RESTRICTIVE", severity: "critical", mel_category: "C", mmel_category: "B", mel_remarks: "(O) May be inoperative provided trim is set to neutral.", mmel_remarks: "(O)(M) May be inoperative provided: (a) trim set to neutral, (b) manual reversion verified.", hitl_reason: "CRITICAL: MEL category C is less restrictive than MMEL B" },
-                { ata_chapter: "34", item_number: "34-20-01", item_description: "Weather Radar System", verdict: "CATEGORY_MISMATCH", severity: "high", mel_category: "C", mmel_category: "B", mel_remarks: "(O) May be inoperative for VFR.", mmel_remarks: "(O)(M) May be inoperative for day VFR only.", hitl_reason: "Category deviation requires review" },
-                { ata_chapter: "29", item_number: "29-10-01", item_description: "Hydraulic System Pressure Indicator", verdict: "REMARKS_DEVIATION", severity: "medium", mel_category: "D", mmel_category: "C", mel_remarks: "(O) One may be inoperative.", mmel_remarks: "(O) One may be inoperative provided associated system quantity indicator operative.", hitl_reason: "Remarks differ - manual review required" },
-                { ata_chapter: "34", item_number: "34-52-01", item_description: "Radio Altimeter", verdict: "MISSING_IN_MEL", severity: "warning", mel_category: "", mmel_category: "C", mel_remarks: "", mmel_remarks: "(O) One may be inoperative provided CAT II/III ops not conducted.", hitl_reason: "MMEL item not found in MEL - verify if equipment installed" },
-                { ata_chapter: "52", item_number: "52-10-01", item_description: "Passenger Door", verdict: "MISSING_IN_MEL", severity: "warning", mel_category: "", mmel_category: "A", mel_remarks: "", mmel_remarks: "All doors must be operative for dispatch.", hitl_reason: "MMEL item not found in MEL" },
-                { ata_chapter: "21", item_number: "21-51-01", item_description: "Air Conditioning Pack", verdict: "COMPLIANT", severity: "info", mel_category: "C", mmel_category: "C", mel_remarks: "(O) May be inoperative provided remaining pack operates normally.", mmel_remarks: "(O) May be inoperative provided: (a) remaining pack operates normally, (b) APU bleed available." },
-                { ata_chapter: "32", item_number: "32-40-01", item_description: "Nose Wheel Steering System", verdict: "MORE_RESTRICTIVE", severity: "info", mel_category: "B", mmel_category: "C", mel_remarks: "(M)(O) May be inoperative provided aircraft is not operated on contaminated runway.", mmel_remarks: "(M)(O) May be inoperative provided: (a) runway not contaminated, (b) pushback used." },
-                { ata_chapter: "24", item_number: "24-22-01", item_description: "AC Generator", verdict: "COMPLIANT", severity: "info", mel_category: "C", mmel_category: "C", mel_remarks: "(O)(M) May be inoperative provided APU generator is operative.", mmel_remarks: "(O)(M) May be inoperative provided: (a) APU generator is operative, (b) ETOPS prohibited." },
-                { ata_chapter: "34", item_number: "34-10-01", item_description: "Flight Management System (FMS)", verdict: "COMPLIANT", severity: "info", mel_category: "C", mmel_category: "C", mel_remarks: "(O) One may be inoperative provided RNAV operations are not conducted.", mmel_remarks: "(O) One may be inoperative provided: (a) RNAV ops prohibited, (b) manual navigation available." },
-                { ata_chapter: "49", item_number: "49-10-01", item_description: "Auxiliary Power Unit (APU)", verdict: "COMPLIANT", severity: "info", mel_category: "C", mmel_category: "C", mel_remarks: "(O)(M) May be inoperative provided external power is available.", mmel_remarks: "(O)(M) May be inoperative provided: (a) external power available, (b) main generators operative." },
-                { ata_chapter: "77", item_number: "77-10-01", item_description: "Engine Indicating System", verdict: "MORE_RESTRICTIVE", severity: "info", mel_category: "A", mmel_category: "B", mel_remarks: "Must be operative.", mmel_remarks: "(M) Both primary systems required. Secondary may substitute per AFM." }
-            ]
-        };
+        // Configuration
+        const API_BASE_URL = window.location.origin;
+        let currentJobId = null;
+        let pollingInterval = null;
+        let auditData = null;
 
-        const verdictConfig = {
-            COMPLIANT: { label: 'Conforme', icon: '✓', class: 'badge-compliant' },
-            MORE_RESTRICTIVE: { label: 'Plus Restrictif', icon: '↑', class: 'badge-more' },
-            LESS_RESTRICTIVE: { label: 'Moins Restrictif', icon: '↓', class: 'badge-less' },
-            MISSING_IN_MEL: { label: 'Absent MEL', icon: '⚠', class: 'badge-missing-mel' },
-            MISSING_IN_MMEL: { label: 'Absent MMEL', icon: '○', class: 'badge-missing-mmel' },
-            CATEGORY_MISMATCH: { label: 'Écart Cat.', icon: '≠', class: 'badge-mismatch' },
-            REMARKS_DEVIATION: { label: 'Écart Rem.', icon: '~', class: 'badge-deviation' }
-        };
+        // File state
+        let melFile = null;
+        let mmelFile = null;
 
-        const severityConfig = {
-            critical: { label: 'Critique', class: 'severity-critical' },
-            high: { label: 'Élevé', class: 'severity-high' },
-            medium: { label: 'Moyen', class: 'severity-medium' },
-            warning: { label: 'Attention', class: 'severity-warning' },
-            info: { label: 'Info', class: 'severity-info' }
-        };
-
-        function init() {
-            renderSummaryCards();
-            renderDonutChart();
-            renderBarChart();
-            renderTable(auditData.comparisons);
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            checkServices();
+            setupDragDrop();
             setupFilters();
+        });
+
+        // Service health checks
+        async function checkServices() {
+            // API Health
+            try {
+                const res = await fetch(`${API_BASE_URL}/health`);
+                document.getElementById('apiStatus').className = 'service-dot ' + (res.ok ? 'online' : 'offline');
+            } catch {
+                document.getElementById('apiStatus').className = 'service-dot offline';
+            }
+
+            // Docling Service (via API proxy)
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/services/docling/health`);
+                document.getElementById('doclingStatus').className = 'service-dot ' + (res.ok ? 'online' : 'offline');
+            } catch {
+                document.getElementById('doclingStatus').className = 'service-dot unknown';
+            }
+
+            // Granite-Docling (via API proxy)
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/services/granite/health`);
+                document.getElementById('graniteStatus').className = 'service-dot ' + (res.ok ? 'online' : 'offline');
+            } catch {
+                document.getElementById('graniteStatus').className = 'service-dot unknown';
+            }
         }
 
-        function renderSummaryCards() {
-            const s = auditData.summary;
+        // Tab navigation
+        function showTab(tab) {
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+
+            if (tab === 'upload') {
+                document.getElementById('uploadSection').style.display = 'block';
+                document.getElementById('resultsSection').classList.remove('active');
+            } else {
+                document.getElementById('uploadSection').style.display = 'none';
+                document.getElementById('resultsSection').classList.add('active');
+            }
+        }
+
+        // Drag and drop
+        function setupDragDrop() {
+            ['mel', 'mmel'].forEach(type => {
+                const box = document.getElementById(`${type}UploadBox`);
+
+                box.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    box.classList.add('dragover');
+                });
+
+                box.addEventListener('dragleave', () => {
+                    box.classList.remove('dragover');
+                });
+
+                box.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    box.classList.remove('dragover');
+                    const file = e.dataTransfer.files[0];
+                    if (file && file.type === 'application/pdf') {
+                        if (type === 'mel') melFile = file;
+                        else mmelFile = file;
+                        updateFileDisplay(type, file.name);
+                    }
+                });
+            });
+        }
+
+        // File handling
+        function handleFileSelect(type, input) {
+            const file = input.files[0];
+            if (file) {
+                if (type === 'mel') melFile = file;
+                else mmelFile = file;
+                updateFileDisplay(type, file.name);
+            }
+        }
+
+        function updateFileDisplay(type, filename) {
+            const box = document.getElementById(`${type}UploadBox`);
+            const filenameEl = document.getElementById(`${type}Filename`);
+
+            box.classList.add('has-file');
+            filenameEl.textContent = filename;
+
+            updateStartButton();
+        }
+
+        function updateStartButton() {
+            const btn = document.getElementById('startAuditBtn');
+            btn.disabled = !(melFile && mmelFile);
+        }
+
+        function resetForm() {
+            melFile = null;
+            mmelFile = null;
+
+            document.getElementById('melFile').value = '';
+            document.getElementById('mmelFile').value = '';
+            document.getElementById('melUploadBox').classList.remove('has-file');
+            document.getElementById('mmelUploadBox').classList.remove('has-file');
+            document.getElementById('melFilename').textContent = '';
+            document.getElementById('mmelFilename').textContent = '';
+
+            updateStartButton();
+        }
+
+        // Audit workflow
+        async function startAudit() {
+            if (!melFile || !mmelFile) {
+                showToast('Veuillez selectionner les deux fichiers', 'error');
+                return;
+            }
+
+            // Show progress
+            document.getElementById('progressSection').classList.add('active');
+            updateProgress(1, 'Upload des fichiers...');
+
+            try {
+                // Upload MEL
+                const melFormData = new FormData();
+                melFormData.append('file', melFile);
+
+                const melUpload = await fetch(`${API_BASE_URL}/api/upload/MEL`, {
+                    method: 'POST',
+                    body: melFormData
+                });
+
+                if (!melUpload.ok) throw new Error('Erreur upload MEL');
+                const melResult = await melUpload.json();
+
+                updateProgress(2, 'Parsing MEL...');
+
+                // Upload MMEL
+                const mmelFormData = new FormData();
+                mmelFormData.append('file', mmelFile);
+
+                const mmelUpload = await fetch(`${API_BASE_URL}/api/upload/MMEL`, {
+                    method: 'POST',
+                    body: mmelFormData
+                });
+
+                if (!mmelUpload.ok) throw new Error('Erreur upload MMEL');
+                const mmelResult = await mmelUpload.json();
+
+                updateProgress(3, 'Parsing MMEL...');
+
+                // Start audit
+                const auditBody = {
+                    mel_file: melResult.filename,
+                    mmel_file: mmelResult.filename,
+                    aircraft_type: document.getElementById('aircraftType').value,
+                    msn: document.getElementById('msnInput').value || null,
+                    operation_type: document.getElementById('operationType').value,
+                    operator: document.getElementById('operatorName').value || null
+                };
+
+                const auditRes = await fetch(`${API_BASE_URL}/api/audit/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(auditBody)
+                });
+
+                if (!auditRes.ok) throw new Error('Erreur demarrage audit');
+                const auditInfo = await auditRes.json();
+
+                currentJobId = auditInfo.job_id;
+                updateProgress(4, 'Comparaison en cours...');
+
+                // Poll for results
+                startPolling(currentJobId);
+
+            } catch (error) {
+                showToast('Erreur: ' + error.message, 'error');
+                document.getElementById('progressSection').classList.remove('active');
+            }
+        }
+
+        function updateProgress(step, message) {
+            document.getElementById('progressTitle').textContent = message;
+            document.getElementById('progressBar').style.width = (step * 20) + '%';
+
+            for (let i = 1; i <= 5; i++) {
+                const stepEl = document.getElementById('step' + i);
+                stepEl.classList.remove('active', 'completed');
+                if (i < step) stepEl.classList.add('completed');
+                else if (i === step) stepEl.classList.add('active');
+            }
+        }
+
+        function startPolling(jobId) {
+            pollingInterval = setInterval(async () => {
+                try {
+                    const res = await fetch(`${API_BASE_URL}/api/audit/status/${jobId}`);
+                    const status = await res.json();
+
+                    if (status.status === 'completed') {
+                        clearInterval(pollingInterval);
+                        updateProgress(5, 'Rapport genere!');
+
+                        document.getElementById('progressStatus').textContent = 'Termine';
+                        document.getElementById('progressStatus').className = 'progress-status completed';
+                        document.getElementById('progressSpinner').style.display = 'none';
+
+                        // Fetch results
+                        const resultRes = await fetch(`${API_BASE_URL}/api/audit/result/${jobId}`);
+                        auditData = await resultRes.json();
+
+                        showToast('Audit termine avec succes!', 'success');
+
+                        setTimeout(() => {
+                            document.getElementById('progressSection').classList.remove('active');
+                            displayResults(auditData);
+                            document.getElementById('resultsTab').click();
+                        }, 1500);
+
+                    } else if (status.status === 'failed') {
+                        clearInterval(pollingInterval);
+                        document.getElementById('progressStatus').textContent = 'Echec';
+                        document.getElementById('progressStatus').className = 'progress-status failed';
+                        showToast('Audit echoue: ' + (status.error || 'Erreur inconnue'), 'error');
+                    }
+                } catch (error) {
+                    console.error('Polling error:', error);
+                }
+            }, 2000);
+        }
+
+        // Results display
+        function displayResults(data) {
+            document.getElementById('resultsSection').classList.add('active');
+
+            // Update doc info
+            document.getElementById('resultMelName').textContent = data.mel_document || melFile.name;
+            document.getElementById('resultMmelName').textContent = data.mmel_document || mmelFile.name;
+            document.getElementById('resultRunId').textContent = 'Run #' + (data.run_id || currentJobId);
+
+            // Render components
+            renderSummaryCards(data.summary);
+            renderDonutChart(data.summary);
+            renderBarChart(data.severity_breakdown);
+            renderTable(data.comparisons || []);
+        }
+
+        function renderSummaryCards(s) {
+            if (!s) return;
             const cards = [
-                { label: 'Items Analysés', value: s.total, color: '#374151' },
-                { label: 'Taux Conformité', value: s.compliance_rate + '%', subtitle: (s.compliant + s.more_restrictive) + ' items OK', color: '#16a34a' },
-                { label: 'Écarts Critiques', value: auditData.severity_breakdown.critical, subtitle: 'Action immédiate', color: '#dc2626' },
-                { label: 'Review HITL', value: s.hitl_required, subtitle: 'En attente', color: '#ea580c' },
-                { label: 'SLA 48h', value: auditData.severity_breakdown.critical + auditData.severity_breakdown.high, subtitle: 'Prioritaires', color: '#7c3aed' }
+                { label: 'Items Analyses', value: s.total || 0, color: '#374151' },
+                { label: 'Taux Conformite', value: (s.compliance_rate || 0).toFixed(1) + '%', subtitle: (s.compliant || 0) + ' conformes', color: '#16a34a' },
+                { label: 'Ecarts Critiques', value: s.less_restrictive || 0, subtitle: 'Action immediate', color: '#dc2626' },
+                { label: 'Review HITL', value: s.hitl_required || 0, subtitle: 'En attente', color: '#ea580c' },
+                { label: 'SLA 48h', value: (s.critical || 0) + (s.high || 0), subtitle: 'Prioritaires', color: '#7c3aed' }
             ];
-            document.getElementById('summaryCards').innerHTML = cards.map(c => 
-                '<div class="summary-card"><div class="label">' + c.label + '</div><div class="value" style="color:' + c.color + '">' + c.value + '</div>' + (c.subtitle ? '<div class="subtitle">' + c.subtitle + '</div>' : '') + '</div>'
+            document.getElementById('summaryCards').innerHTML = cards.map(c =>
+                `<div class="summary-card"><div class="label">${c.label}</div><div class="value" style="color:${c.color}">${c.value}</div>${c.subtitle ? `<div class="subtitle">${c.subtitle}</div>` : ''}</div>`
             ).join('');
         }
 
-        function renderDonutChart() {
-            const s = auditData.summary;
+        function renderDonutChart(s) {
+            if (!s) return;
             const data = [
-                { label: 'Conforme', value: s.compliant, color: '#16a34a' },
-                { label: 'Plus Restrictif', value: s.more_restrictive, color: '#2563eb' },
-                { label: 'Moins Restrictif', value: s.less_restrictive, color: '#dc2626' },
-                { label: 'Absent MEL', value: s.missing_in_mel, color: '#ea580c' },
-                { label: 'Autres', value: s.other_deviations, color: '#7c3aed' }
+                { label: 'Conforme', value: s.compliant || 0, color: '#16a34a' },
+                { label: 'Plus Restrictif', value: s.more_restrictive || 0, color: '#2563eb' },
+                { label: 'Moins Restrictif', value: s.less_restrictive || 0, color: '#dc2626' },
+                { label: 'Absent MEL', value: s.missing_in_mel || 0, color: '#ea580c' },
+                { label: 'Autres', value: s.other_deviations || 0, color: '#7c3aed' }
             ].filter(d => d.value > 0);
 
             const total = data.reduce((sum, d) => sum + d.value, 0);
+            if (total === 0) {
+                document.getElementById('donutChart').innerHTML = '<div style="text-align:center;color:#94a3b8">Aucune donnee</div>';
+                return;
+            }
+
             const size = 180, strokeWidth = 30, radius = (size - strokeWidth) / 2;
             const circumference = 2 * Math.PI * radius;
 
@@ -464,31 +1076,50 @@
             data.forEach(d => {
                 const percent = d.value / total;
                 const dashArray = (circumference * percent) + ' ' + (circumference * (1 - percent));
-                segments += '<circle cx="' + (size/2) + '" cy="' + (size/2) + '" r="' + radius + '" fill="none" stroke="' + d.color + '" stroke-width="' + strokeWidth + '" stroke-dasharray="' + dashArray + '" stroke-dashoffset="' + (-offset) + '"/>';
+                segments += `<circle cx="${size/2}" cy="${size/2}" r="${radius}" fill="none" stroke="${d.color}" stroke-width="${strokeWidth}" stroke-dasharray="${dashArray}" stroke-dashoffset="${-offset}"/>`;
                 offset += circumference * percent;
             });
 
-            document.getElementById('donutChart').innerHTML = '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" style="transform:rotate(-90deg)">' + segments + '</svg><div class="donut-center"><div class="value">' + total + '</div><div class="label">Total</div></div>';
-            document.getElementById('donutLegend').innerHTML = data.map(d => '<div class="legend-item"><div class="legend-dot" style="background:' + d.color + '"></div><span>' + d.label + ': ' + d.value + '</span></div>').join('');
+            document.getElementById('donutChart').innerHTML = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="transform:rotate(-90deg)">${segments}</svg><div class="donut-center"><div class="value">${total}</div><div class="label">Total</div></div>`;
+            document.getElementById('donutLegend').innerHTML = data.map(d => `<div class="legend-item"><div class="legend-dot" style="background:${d.color}"></div><span>${d.label}: ${d.value}</span></div>`).join('');
         }
 
-        function renderBarChart() {
+        function renderBarChart(breakdown) {
+            if (!breakdown) return;
             const data = [
-                { label: 'Critique', value: auditData.severity_breakdown.critical, color: '#dc2626' },
-                { label: 'Élevé', value: auditData.severity_breakdown.high, color: '#ea580c' },
-                { label: 'Moyen', value: auditData.severity_breakdown.medium, color: '#d97706' },
-                { label: 'Attention', value: auditData.severity_breakdown.warning, color: '#ca8a04' },
-                { label: 'Info', value: auditData.severity_breakdown.info, color: '#16a34a' }
+                { label: 'Critique', value: breakdown.critical || 0, color: '#dc2626' },
+                { label: 'Eleve', value: breakdown.high || 0, color: '#ea580c' },
+                { label: 'Moyen', value: breakdown.medium || 0, color: '#d97706' },
+                { label: 'Attention', value: breakdown.warning || 0, color: '#ca8a04' },
+                { label: 'Info', value: breakdown.info || 0, color: '#16a34a' }
             ];
-            const max = Math.max.apply(null, data.map(d => d.value)) || 1;
-            document.getElementById('barChart').innerHTML = data.map(d => 
-                '<div class="bar-item"><div class="bar-label">' + d.label + '</div><div class="bar-container"><div class="bar-fill" style="width:' + ((d.value/max)*100) + '%;background:' + d.color + '"><span class="bar-value">' + d.value + '</span></div></div></div>'
+            const max = Math.max(...data.map(d => d.value)) || 1;
+            document.getElementById('barChart').innerHTML = data.map(d =>
+                `<div class="bar-item"><div class="bar-label">${d.label}</div><div class="bar-container"><div class="bar-fill" style="width:${(d.value/max)*100}%;background:${d.color}"><span class="bar-value">${d.value}</span></div></div></div>`
             ).join('');
         }
 
+        const verdictConfig = {
+            COMPLIANT: { label: 'Conforme', icon: 'V', class: 'badge-compliant' },
+            MORE_RESTRICTIVE: { label: 'Plus Restrictif', icon: '+', class: 'badge-more' },
+            LESS_RESTRICTIVE: { label: 'Moins Restrictif', icon: '-', class: 'badge-less' },
+            MISSING_IN_MEL: { label: 'Absent MEL', icon: '!', class: 'badge-missing-mel' },
+            MISSING_IN_MMEL: { label: 'Absent MMEL', icon: 'o', class: 'badge-missing-mmel' },
+            CATEGORY_MISMATCH: { label: 'Ecart Cat.', icon: '!=', class: 'badge-mismatch' },
+            REMARKS_DEVIATION: { label: 'Ecart Rem.', icon: '~', class: 'badge-deviation' }
+        };
+
+        const severityConfig = {
+            critical: { label: 'Critique', class: 'severity-critical' },
+            high: { label: 'Eleve', class: 'severity-high' },
+            medium: { label: 'Moyen', class: 'severity-medium' },
+            warning: { label: 'Attention', class: 'severity-warning' },
+            info: { label: 'Info', class: 'severity-info' }
+        };
+
         function renderTable(items) {
             const severityOrder = { critical: 0, high: 1, medium: 2, warning: 3, info: 4 };
-            items = items.slice().sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+            items = items.slice().sort((a, b) => (severityOrder[a.severity] || 5) - (severityOrder[b.severity] || 5));
 
             let html = '';
             items.forEach((item, i) => {
@@ -496,40 +1127,47 @@
                 const sv = severityConfig[item.severity] || severityConfig.info;
                 const mismatch = item.mel_category && item.mmel_category && item.mel_category !== item.mmel_category;
 
-                html += '<tr class="data-row" onclick="toggleRow(' + i + ')" id="row-' + i + '">';
-                html += '<td><span class="expand-icon">▶</span><span class="mono">' + item.ata_chapter + '</span></td>';
-                html += '<td class="mono">' + item.item_number + '</td>';
-                html += '<td><div class="description" title="' + item.item_description + '">' + item.item_description + '</div></td>';
-                html += '<td class="center"><span class="category' + (mismatch ? ' mismatch' : '') + '">' + (item.mel_category || '-') + '</span></td>';
-                html += '<td class="center"><span class="category">' + (item.mmel_category || '-') + '</span></td>';
-                html += '<td><span class="badge ' + v.class + '">' + v.icon + ' ' + v.label + '</span></td>';
-                html += '<td><span class="severity ' + sv.class + '">' + sv.label + '</span></td>';
+                html += `<tr class="data-row" onclick="toggleRow(${i})" id="row-${i}">`;
+                html += `<td><span class="expand-icon">></span><span class="mono">${item.ata_chapter || '-'}</span></td>`;
+                html += `<td class="mono">${item.item_number || '-'}</td>`;
+                html += `<td><div class="description" title="${item.item_description || ''}">${item.item_description || '-'}</div></td>`;
+                html += `<td class="center"><span class="category${mismatch ? ' mismatch' : ''}">${item.mel_category || '-'}</span></td>`;
+                html += `<td class="center"><span class="category">${item.mmel_category || '-'}</span></td>`;
+                html += `<td><span class="badge ${v.class}">${v.icon} ${v.label}</span></td>`;
+                html += `<td><span class="severity ${sv.class}">${sv.label}</span></td>`;
                 html += '</tr>';
-                
-                html += '<tr class="expanded-row" id="expanded-' + i + '"><td colspan="7"><div class="expanded-content">';
+
+                html += `<tr class="expanded-row" id="expanded-${i}"><td colspan="7"><div class="expanded-content">`;
                 html += '<div class="expanded-grid">';
-                html += '<div class="expanded-section mel"><h4>📘 MEL</h4>';
-                html += '<div class="expanded-box mel"><div class="label">Catégorie</div><div class="value large" style="color:#3b82f6">' + (item.mel_category || '-') + '</div></div>';
-                html += '<div class="expanded-box mel"><div class="label">Remarques</div><div class="value">' + (item.mel_remarks || 'Aucune') + '</div></div></div>';
-                html += '<div class="expanded-section mmel"><h4>📗 MMEL (Référence)</h4>';
-                html += '<div class="expanded-box mmel"><div class="label">Catégorie</div><div class="value large" style="color:#22c55e">' + (item.mmel_category || '-') + '</div></div>';
-                html += '<div class="expanded-box mmel"><div class="label">Remarques</div><div class="value">' + (item.mmel_remarks || 'Aucune') + '</div></div></div>';
+                html += `<div class="expanded-section mel"><h4>MEL</h4>`;
+                html += `<div class="expanded-box mel"><div class="label">Categorie</div><div class="value large" style="color:#3b82f6">${item.mel_category || '-'}</div></div>`;
+                html += `<div class="expanded-box mel"><div class="label">Remarques</div><div class="value">${item.mel_remarks || 'Aucune'}</div></div></div>`;
+                html += `<div class="expanded-section mmel"><h4>MMEL (Reference)</h4>`;
+                html += `<div class="expanded-box mmel"><div class="label">Categorie</div><div class="value large" style="color:#22c55e">${item.mmel_category || '-'}</div></div>`;
+                html += `<div class="expanded-box mmel"><div class="label">Remarques</div><div class="value">${item.mmel_remarks || 'Aucune'}</div></div></div>`;
                 html += '</div>';
                 if (item.hitl_reason) {
-                    html += '<div class="alert-box ' + (item.severity === 'critical' ? 'critical' : 'warning') + '">⚠️ ' + item.hitl_reason + '</div>';
+                    html += `<div class="alert-box ${item.severity === 'critical' ? 'critical' : 'warning'}">${item.hitl_reason}</div>`;
+                }
+                if (item.needs_hitl) {
+                    html += `<div class="hitl-actions">
+                        <button class="btn btn-sm btn-approve" onclick="event.stopPropagation(); validateHitl('${item.item_number}', 'approve')">Approuver</button>
+                        <button class="btn btn-sm btn-reject" onclick="event.stopPropagation(); validateHitl('${item.item_number}', 'reject')">Rejeter</button>
+                        <button class="btn btn-sm btn-escalate" onclick="event.stopPropagation(); validateHitl('${item.item_number}', 'escalate')">Escalader</button>
+                    </div>`;
                 }
                 html += '</div></td></tr>';
             });
 
-            document.getElementById('tableBody').innerHTML = html;
-            document.getElementById('itemCount').textContent = items.length + ' / ' + auditData.comparisons.length + ' items';
+            document.getElementById('tableBody').innerHTML = html || '<tr><td colspan="7" style="text-align:center;padding:2rem;color:#94a3b8">Aucun resultat</td></tr>';
+            document.getElementById('itemCount').textContent = items.length + ' items';
         }
 
         let expandedRow = null;
         function toggleRow(index) {
             const row = document.getElementById('row-' + index);
             const content = document.querySelector('#expanded-' + index + ' .expanded-content');
-            
+
             if (expandedRow === index) {
                 content.classList.remove('show');
                 row.classList.remove('expanded');
@@ -546,20 +1184,25 @@
         }
 
         function setupFilters() {
-            var searchInput = document.getElementById('searchInput');
-            var severityFilter = document.getElementById('severityFilter');
-            var verdictFilter = document.getElementById('verdictFilter');
+            const searchInput = document.getElementById('searchInput');
+            const severityFilter = document.getElementById('severityFilter');
+            const verdictFilter = document.getElementById('verdictFilter');
 
             function applyFilters() {
-                var search = searchInput.value.toLowerCase();
-                var severity = severityFilter.value;
-                var verdict = verdictFilter.value;
+                if (!auditData || !auditData.comparisons) return;
+
+                const search = searchInput.value.toLowerCase();
+                const severity = severityFilter.value;
+                const verdict = verdictFilter.value;
                 expandedRow = null;
 
-                var filtered = auditData.comparisons.filter(function(item) {
-                    var matchSearch = !search || item.ata_chapter.toLowerCase().indexOf(search) !== -1 || item.item_number.toLowerCase().indexOf(search) !== -1 || item.item_description.toLowerCase().indexOf(search) !== -1;
-                    var matchSeverity = severity === 'all' || item.severity === severity;
-                    var matchVerdict = verdict === 'all' || item.verdict === verdict;
+                const filtered = auditData.comparisons.filter(item => {
+                    const matchSearch = !search ||
+                        (item.ata_chapter || '').toLowerCase().includes(search) ||
+                        (item.item_number || '').toLowerCase().includes(search) ||
+                        (item.item_description || '').toLowerCase().includes(search);
+                    const matchSeverity = severity === 'all' || item.severity === severity;
+                    const matchVerdict = verdict === 'all' || item.verdict === verdict;
                     return matchSearch && matchSeverity && matchVerdict;
                 });
                 renderTable(filtered);
@@ -570,7 +1213,67 @@
             verdictFilter.addEventListener('change', applyFilters);
         }
 
-        init();
+        // HITL Validation
+        async function validateHitl(itemId, action) {
+            if (!currentJobId) return;
+
+            try {
+                const res = await fetch(`${API_BASE_URL}/api/hitl/${currentJobId}/validate/${itemId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: action })
+                });
+
+                if (res.ok) {
+                    showToast(`Item ${itemId} ${action === 'approve' ? 'approuve' : action === 'reject' ? 'rejete' : 'escalade'}`, 'success');
+                } else {
+                    throw new Error('Erreur validation');
+                }
+            } catch (error) {
+                showToast('Erreur: ' + error.message, 'error');
+            }
+        }
+
+        // Toast notifications
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = 'toast ' + type;
+            toast.textContent = message;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.remove();
+            }, 4000);
+        }
+
+        // Demo data for testing without backend
+        function loadDemoData() {
+            auditData = {
+                run_id: 'DEMO_' + Date.now(),
+                mel_document: 'Sample_Airline_A320_MEL_Rev15.pdf',
+                mmel_document: 'A320_MMEL_Rev42_EASA.pdf',
+                summary: {
+                    total: 12,
+                    compliant: 5,
+                    more_restrictive: 2,
+                    less_restrictive: 2,
+                    missing_in_mel: 2,
+                    other_deviations: 1,
+                    hitl_required: 5,
+                    compliance_rate: 58.33
+                },
+                severity_breakdown: { critical: 2, high: 1, medium: 1, warning: 2, info: 6 },
+                comparisons: [
+                    { ata_chapter: "24", item_number: "24-10-01", item_description: "Main Battery", verdict: "LESS_RESTRICTIVE", severity: "critical", mel_category: "B", mmel_category: "A", mel_remarks: "(M) Maintenance verification required.", mmel_remarks: "Go item - must be operative for dispatch.", hitl_reason: "CRITICAL: MEL category B is less restrictive than MMEL A", needs_hitl: true },
+                    { ata_chapter: "27", item_number: "27-30-01", item_description: "Aileron Trim System", verdict: "LESS_RESTRICTIVE", severity: "critical", mel_category: "C", mmel_category: "B", mel_remarks: "(O) May be inoperative provided trim is set to neutral.", mmel_remarks: "(O)(M) May be inoperative provided: (a) trim set to neutral, (b) manual reversion verified.", hitl_reason: "CRITICAL: MEL category C is less restrictive than MMEL B", needs_hitl: true },
+                    { ata_chapter: "21", item_number: "21-51-01", item_description: "Air Conditioning Pack", verdict: "COMPLIANT", severity: "info", mel_category: "C", mmel_category: "C", mel_remarks: "(O) May be inoperative provided remaining pack operates normally.", mmel_remarks: "(O) May be inoperative provided: (a) remaining pack operates normally, (b) APU bleed available." },
+                    { ata_chapter: "32", item_number: "32-40-01", item_description: "Nose Wheel Steering System", verdict: "MORE_RESTRICTIVE", severity: "info", mel_category: "B", mmel_category: "C", mel_remarks: "(M)(O) May be inoperative provided aircraft is not operated on contaminated runway.", mmel_remarks: "(M)(O) May be inoperative provided: (a) runway not contaminated, (b) pushback used." }
+                ]
+            };
+            displayResults(auditData);
+            document.getElementById('resultsTab').click();
+        }
     </script>
 </body>
 </html>

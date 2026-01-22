@@ -1,0 +1,114 @@
+# Granite-Docling vLLM Deployment Options
+# ========================================
+# Use one of the following profiles based on your hardware
+
+version: '3.8'
+
+services:
+  # =========================================================================
+  # GPU Deployment (Recommended for Production)
+  # =========================================================================
+  granite-docling-gpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: granite-docling-vllm:latest
+    container_name: granite-docling-gpu
+    profiles:
+      - gpu
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_NAME=ibm-granite/granite-docling-258M
+      - MODEL_REVISION=untied
+      - PORT=8000
+      - MAX_MODEL_LEN=8192
+      - GPU_MEMORY_UTILIZATION=0.85
+      - DTYPE=auto
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  # =========================================================================
+  # CPU Deployment (Transformers - Slower but no GPU required)
+  # =========================================================================
+  granite-docling-cpu:
+    image: python:3.11-slim-bookworm
+    container_name: granite-docling-cpu
+    profiles:
+      - cpu
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_NAME=ibm-granite/granite-docling-258M
+      - PORT=8000
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+      - ./cpu_server.py:/app/server.py
+    working_dir: /app
+    command: >
+      bash -c "pip install transformers torch accelerate fastapi uvicorn pillow &&
+               python server.py"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+      start_period: 180s
+
+  # =========================================================================
+  # Scaleway GPU Instance (L4 / T4)
+  # =========================================================================
+  granite-docling-scaleway:
+    build:
+      context: .
+      dockerfile: Dockerfile.scaleway
+    image: granite-docling-scaleway:latest
+    container_name: granite-docling-scaleway
+    profiles:
+      - scaleway
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_NAME=ibm-granite/granite-docling-258M
+      - MODEL_REVISION=untied
+      - PORT=8000
+      - MAX_MODEL_LEN=8192
+      # For T4 GPUs (no bfloat16 support)
+      - DTYPE=float16
+      - GPU_MEMORY_UTILIZATION=0.90
+      - HUGGING_FACE_HUB_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - huggingface-cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  huggingface-cache:
+    driver: local
+
+networks:
+  default:
+    name: moaudit-network

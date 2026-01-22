@@ -2,12 +2,103 @@
 MoA_MEL PoC - Configuration
 ============================
 Configuration centralisée pour le prototype d'audit MEL/MMEL
+Mise à jour pour support services distants (Docling, Granite-Docling)
 """
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Literal
 from pathlib import Path
+from enum import Enum
+
+
+class ParsingBackend(str, Enum):
+    """Backend de parsing disponibles"""
+    LOCAL_DOCLING = "local_docling"      # Docling installé localement
+    REMOTE_DOCLING = "remote_docling"    # Service Docling distant (Scaleway)
+    MISTRAL_VLM = "mistral_vlm"          # Pixtral via API Mistral
+    GEMINI = "gemini"                     # Google Gemini
+    FALLBACK_PYMUPDF = "fallback"         # PyMuPDF basique
+
+
+@dataclass
+class DoclingServiceConfig:
+    """Configuration du service Docling distant"""
+    # URL du service Docling API
+    service_url: str = field(default_factory=lambda: os.getenv(
+        "DOCLING_SERVICE_URL", "http://localhost:8001"
+    ))
+
+    # Timeout pour les requêtes (secondes)
+    timeout: int = 300
+
+    # Nombre de retries
+    max_retries: int = 3
+
+    # Intervalle entre retries (secondes)
+    retry_interval: float = 2.0
+
+    # Activer le mode VLM (Granite-Docling)
+    use_vlm: bool = True
+
+    # Format de sortie préféré
+    output_format: str = "json"  # json, markdown, html
+
+
+@dataclass
+class GraniteDoclingConfig:
+    """Configuration du service Granite-Docling VLM"""
+    # URL du service vLLM
+    service_url: str = field(default_factory=lambda: os.getenv(
+        "GRANITE_DOCLING_URL", "http://localhost:8000/v1"
+    ))
+
+    # Nom du modèle
+    model_name: str = "ibm-granite/granite-docling-258M"
+
+    # Timeout pour l'inférence (secondes)
+    timeout: int = 120
+
+    # Paramètres de génération
+    max_tokens: int = 8192
+    temperature: float = 0.0
+
+    # Backend: vllm, transformers, mlx
+    backend: str = "vllm"
+
+
+@dataclass
+class StorageConfig:
+    """Configuration du stockage fichiers"""
+    # Backend: local, s3, scaleway
+    backend: str = field(default_factory=lambda: os.getenv("STORAGE_BACKEND", "local"))
+
+    # Stockage local
+    local_path: str = "data/uploads"
+
+    # S3 / Scaleway Object Storage
+    s3_endpoint_url: str = field(default_factory=lambda: os.getenv("S3_ENDPOINT_URL", ""))
+    s3_access_key: str = field(default_factory=lambda: os.getenv("S3_ACCESS_KEY", ""))
+    s3_secret_key: str = field(default_factory=lambda: os.getenv("S3_SECRET_KEY", ""))
+    s3_bucket_name: str = field(default_factory=lambda: os.getenv("S3_BUCKET_NAME", "moaudit-documents"))
+    s3_region: str = field(default_factory=lambda: os.getenv("S3_REGION", "fr-par"))
+
+
+@dataclass
+class RedisConfig:
+    """Configuration Redis pour la file de jobs"""
+    # URL Redis
+    url: str = field(default_factory=lambda: os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+
+    # Activer Redis (sinon in-memory)
+    enabled: bool = field(default_factory=lambda: os.getenv("REDIS_ENABLED", "false").lower() == "true")
+
+    # Préfixe des clés
+    key_prefix: str = "moaudit:"
+
+    # TTL des jobs terminés (secondes)
+    job_ttl: int = 86400  # 24h
+
 
 @dataclass
 class MistralConfig:
@@ -151,6 +242,13 @@ class OutputConfig:
 @dataclass
 class AppConfig:
     """Configuration globale de l'application"""
+    # Services externes
+    docling: DoclingServiceConfig = field(default_factory=DoclingServiceConfig)
+    granite_docling: GraniteDoclingConfig = field(default_factory=GraniteDoclingConfig)
+    storage: StorageConfig = field(default_factory=StorageConfig)
+    redis: RedisConfig = field(default_factory=RedisConfig)
+
+    # Configuration existante
     mistral: MistralConfig = field(default_factory=MistralConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     parsing: ParsingConfig = field(default_factory=ParsingConfig)
@@ -158,18 +256,24 @@ class AppConfig:
     comparison: ComparisonConfig = field(default_factory=ComparisonConfig)
     hitl: HITLConfig = field(default_factory=HITLConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
-    
+
+    # Backend de parsing à utiliser
+    parsing_backend: ParsingBackend = field(default_factory=lambda: ParsingBackend(
+        os.getenv("PARSING_BACKEND", "remote_docling")
+    ))
+
     # Métadonnées
-    version: str = "1.0.0-poc"
-    project_name: str = "MoA_MEL Audit PoC"
-    
+    version: str = "2.0.0"
+    project_name: str = "MoA_MEL Audit"
+
     # Chemins
     base_path: Path = field(default_factory=lambda: Path(__file__).parent.parent)
-    
+
     def __post_init__(self):
         """Création des répertoires nécessaires"""
         dirs = [
             self.base_path / "data",
+            self.base_path / "data" / "uploads",
             self.base_path / "logs" / "hitl",
             self.base_path / "outputs",
             self.base_path / "static",
@@ -177,14 +281,62 @@ class AppConfig:
         for d in dirs:
             d.mkdir(parents=True, exist_ok=True)
 
+    def get_docling_url(self) -> str:
+        """Retourne l'URL complète du service Docling"""
+        return f"{self.docling.service_url}/convert"
+
+    def get_granite_url(self) -> str:
+        """Retourne l'URL complète du service Granite-Docling"""
+        return self.granite_docling.service_url
+
+    def is_remote_parsing(self) -> bool:
+        """Vérifie si le parsing utilise un service distant"""
+        return self.parsing_backend == ParsingBackend.REMOTE_DOCLING
+
 # Instance globale
 config = AppConfig()
 
 def load_config_from_env():
     """Charge la configuration depuis les variables d'environnement"""
+    # Mistral
     config.mistral.api_key = os.getenv("MISTRAL_API_KEY", config.mistral.api_key)
+
+    # Database
     config.database.pg_password = os.getenv("PG_PASSWORD", config.database.pg_password)
+
+    # Docling Service
+    config.docling.service_url = os.getenv("DOCLING_SERVICE_URL", config.docling.service_url)
+    config.docling.use_vlm = os.getenv("DOCLING_USE_VLM", "true").lower() == "true"
+
+    # Granite-Docling Service
+    config.granite_docling.service_url = os.getenv("GRANITE_DOCLING_URL", config.granite_docling.service_url)
+
+    # Storage
+    config.storage.backend = os.getenv("STORAGE_BACKEND", config.storage.backend)
+
+    # Redis
+    config.redis.url = os.getenv("REDIS_URL", config.redis.url)
+    config.redis.enabled = os.getenv("REDIS_ENABLED", "false").lower() == "true"
+
+    # Parsing backend
+    backend_env = os.getenv("PARSING_BACKEND", "remote_docling")
+    try:
+        config.parsing_backend = ParsingBackend(backend_env)
+    except ValueError:
+        config.parsing_backend = ParsingBackend.REMOTE_DOCLING
+
     return config
+
+
+def get_service_urls() -> dict:
+    """Retourne les URLs des services configurés"""
+    return {
+        "docling_service": config.docling.service_url,
+        "granite_docling": config.granite_docling.service_url,
+        "parsing_backend": config.parsing_backend.value,
+        "storage_backend": config.storage.backend,
+        "redis_enabled": config.redis.enabled
+    }
 
 if __name__ == "__main__":
     # Test de la configuration

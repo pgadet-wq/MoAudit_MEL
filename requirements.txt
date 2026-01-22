@@ -1,14 +1,16 @@
-# MoA_MEL PoC - Python Dependencies
-# ==================================
+# MoA_MEL v2.0 - Python Dependencies
+# ===================================
 
 # Core Framework
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 pydantic>=2.5.0
+pydantic-settings>=2.1.0
 
 # HTTP Client
 requests>=2.31.0
 httpx>=0.26.0
+aiohttp>=3.9.0
 
 # PDF Processing
 pymupdf>=1.23.0
@@ -19,16 +21,29 @@ pandas>=2.1.0
 
 # Async Support
 aiofiles>=23.2.0
+anyio>=4.2.0
 
 # Environment & Config
 python-dotenv>=1.0.0
 
 # File Handling
 python-multipart>=0.0.6
+python-magic>=0.4.27
 
 # Logging
 loguru>=0.7.2
 
+# Job Queue (Redis/Celery)
+redis>=5.0.0
+celery>=5.3.0
+
+# Cloud Storage (Optional)
+boto3>=1.34.0
+
 # Testing
 pytest>=7.4.0
 pytest-asyncio>=0.23.0
+
+# Optional: Docling (install separately if using local parsing)
+# docling>=2.5.0
+# docling-core>=2.0.0
