@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docling Service - MoAudit MEL</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 { color: #333; }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .upload-zone {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #007bff;
+            background: #f0f7ff;
+        }
+        .upload-zone input { display: none; }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 10px;
+        }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .status.success { background: #d4edda; color: #155724; }
+        .status.error { background: #f8d7da; color: #721c24; }
+        .status.loading { background: #fff3cd; color: #856404; }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 500px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .stat-box {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .stat-box .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .stat-box .label { color: #666; font-size: 12px; }
+        .config {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .config input {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 250px;
+        }
+        .health {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .health.ok { background: #28a745; }
+        .health.error { background: #dc3545; }
+        .health.unknown { background: #ffc107; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Docling Service - MoAudit MEL</h1>
+
+    <div class="card">
+        <h3>Configuration</h3>
+        <div class="config">
+            <label>Server URL:</label>
+            <input type="text" id="serverUrl" value="http://51.159.146.199:8080">
+            <button onclick="checkHealth()">Vérifier connexion</button>
+            <span id="healthStatus"><span class="health unknown"></span>Non vérifié</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>📄 Upload PDF</h3>
+        <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+            <input type="file" id="fileInput" accept=".pdf">
+            <p>📁 Cliquez ou glissez un fichier PDF ici</p>
+            <p id="fileName" style="color: #007bff; font-weight: bold;"></p>
+        </div>
+        <button id="convertBtn" onclick="convertDocument()" disabled>Convertir en Markdown</button>
+        <div id="status"></div>
+    </div>
+
+    <div class="card" id="resultsCard" style="display: none;">
+        <h3>📊 Résultats</h3>
+        <div class="stats" id="stats"></div>
+        <div style="margin-bottom: 15px;">
+            <button onclick="downloadMarkdown()" style="background: #28a745;">💾 Télécharger Markdown</button>
+            <button onclick="downloadJSON()" style="background: #6c757d;">📄 Télécharger JSON</button>
+            <button onclick="copyToClipboard()" style="background: #17a2b8;">📋 Copier</button>
+        </div>
+        <h4>Markdown extrait:</h4>
+        <div class="result" id="markdown"></div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const convertBtn = document.getElementById('convertBtn');
+        const statusDiv = document.getElementById('status');
+
+        // Drag and drop
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            if (file && file.type === 'application/pdf') {
+                selectedFile = file;
+                document.getElementById('fileName').textContent = `✓ ${file.name} (${(file.size/1024/1024).toFixed(2)} MB)`;
+                convertBtn.disabled = false;
+            } else {
+                alert('Veuillez sélectionner un fichier PDF');
+            }
+        }
+
+        async function checkHealth() {
+            const url = document.getElementById('serverUrl').value;
+            const healthSpan = document.getElementById('healthStatus');
+
+            try {
+                const response = await fetch(`${url}/health`);
+                const data = await response.json();
+
+                if (data.status === 'healthy') {
+                    healthSpan.innerHTML = '<span class="health ok"></span>Connecté ✓';
+                } else {
+                    healthSpan.innerHTML = '<span class="health error"></span>Dégradé';
+                }
+            } catch (e) {
+                healthSpan.innerHTML = '<span class="health error"></span>Erreur connexion';
+            }
+        }
+
+        async function convertDocument() {
+            if (!selectedFile) return;
+
+            const url = document.getElementById('serverUrl').value;
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            statusDiv.className = 'status loading';
+            statusDiv.textContent = '⏳ Conversion en cours... (peut prendre plusieurs minutes pour les gros fichiers)';
+            convertBtn.disabled = true;
+
+            try {
+                const startTime = Date.now();
+                const response = await fetch(`${url}/convert`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+                if (response.ok && data.markdown_length > 0) {
+                    lastResult = data;
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = `✓ Conversion réussie en ${elapsed}s`;
+
+                    document.getElementById('stats').innerHTML = `
+                        <div class="stat-box">
+                            <div class="value">${data.pages}</div>
+                            <div class="label">Pages</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="value">${data.markdown_length.toLocaleString()}</div>
+                            <div class="label">Caractères</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="value">${data.texts_count || 'N/A'}</div>
+                            <div class="label">Textes</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="value">${elapsed}s</div>
+                            <div class="label">Temps</div>
+                        </div>
+                    `;
+
+                    document.getElementById('markdown').textContent = data.markdown;
+                    document.getElementById('resultsCard').style.display = 'block';
+                } else {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = `✗ Erreur: ${data.error || 'Markdown vide'}`;
+                }
+            } catch (e) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `✗ Erreur réseau: ${e.message}`;
+            }
+
+            convertBtn.disabled = false;
+        }
+
+        let lastResult = null;
+
+        function downloadMarkdown() {
+            if (!lastResult) return;
+            const blob = new Blob([lastResult.markdown], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = lastResult.filename.replace('.pdf', '.md');
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function downloadJSON() {
+            if (!lastResult) return;
+            const blob = new Blob([JSON.stringify(lastResult, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = lastResult.filename.replace('.pdf', '.json');
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function copyToClipboard() {
+            if (!lastResult) return;
+            navigator.clipboard.writeText(lastResult.markdown).then(() => {
+                alert('Markdown copié dans le presse-papiers !');
+            });
+        }
+
+        // Check health on load
+        checkHealth();
+    </script>
+</body>
+</html>
