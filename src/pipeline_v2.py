@@ -18,7 +18,7 @@ import argparse
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 import logging
 import sys
 import os
@@ -86,7 +86,7 @@ class PipelineConfigV2:
 
     # Contexte avion
     aircraft_msn: int = 0
-    operation_type: str = "CAT"  # CAT, SPO, NCO, NCC
+    operation_types: List[str] = field(default_factory=lambda: ["CAT"])  # Liste: CAT, SPO, NCO, NCC
     aircraft_type: str = ""
     etops_certified: bool = False
 
@@ -487,7 +487,7 @@ class MoAMELPipelineV2:
         # Créer le contexte avion
         aircraft_context = AircraftContext(
             msn=self.config.aircraft_msn,
-            operation_type=self.config.operation_type,
+            operation_types=self.config.operation_types,  # Liste d'operations
             aircraft_type=self.config.aircraft_type,
             etops_certified=self.config.etops_certified
         )
@@ -611,7 +611,7 @@ class MoAMELPipelineV2:
             Rapport final avec statistiques et fichiers générés
         """
         logger.info(f"=== Pipeline V2 démarré (Run ID: {self.run_id}) ===")
-        logger.info(f"Contexte: MSN {self.config.aircraft_msn}, {self.config.operation_type}")
+        logger.info(f"Contexte: MSN {self.config.aircraft_msn}, Operations: {self.config.operation_types}")
 
         self.state["status"] = "running"
 
@@ -657,7 +657,7 @@ class MoAMELPipelineV2:
             "generated_at": datetime.now().isoformat(),
             "aircraft_context": {
                 "msn": self.config.aircraft_msn,
-                "operation": self.config.operation_type,
+                "operations": self.config.operation_types,  # Liste d'operations
                 "aircraft_type": self.config.aircraft_type
             },
             "summary": {
@@ -757,8 +757,8 @@ Exemples:
 
     # Contexte avion
     parser.add_argument("--msn", type=int, default=0, help="MSN de l'avion (ex: 1280)")
-    parser.add_argument("--operation", default="CAT", choices=["CAT", "SPO", "NCO", "NCC"],
-                       help="Type d'opération")
+    parser.add_argument("--operations", nargs="+", default=["CAT"],
+                       help="Types d'operations (ex: CAT SPO). Valeurs: CAT, SPO, NCO, NCC")
     parser.add_argument("--aircraft-type", default="", help="Type d'avion (ex: A320-214)")
     parser.add_argument("--etops", action="store_true", help="Avion certifié ETOPS")
 
@@ -785,7 +785,7 @@ Exemples:
     config = PipelineConfigV2(
         api_key=args.api_key,
         aircraft_msn=args.msn,
-        operation_type=args.operation,
+        operation_types=args.operations,  # Liste d'operations
         aircraft_type=args.aircraft_type,
         etops_certified=args.etops,
         output_dir=args.output_dir,
@@ -807,7 +807,7 @@ Exemples:
     print("\n" + "=" * 60)
     print("AUDIT MEL/MMEL TERMINÉ")
     print("=" * 60)
-    print(f"\nContexte: MSN {args.msn}, Opération {args.operation}")
+    print(f"\nContexte: MSN {args.msn}, Operations: {args.operations}")
     print(f"\nRésumé:")
     print(json.dumps(result["summary"], indent=2))
 

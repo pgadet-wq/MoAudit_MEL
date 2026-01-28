@@ -99,17 +99,29 @@ class VariantContext:
     aircraft_variants: List[str] = field(default_factory=list)  # A320-214, A320neo
     etops_applicable: Optional[bool] = None
 
-    def matches(self, msn: int, operation: str, aircraft: str = "") -> bool:
-        """Vérifie si le contexte correspond"""
+    def matches(self, msn: int, operations: List[str], aircraft: str = "") -> bool:
+        """
+        Vérifie si le contexte correspond.
+
+        Args:
+            msn: MSN de l'avion
+            operations: Liste des types d'operations de la compagnie (CAT, SPO, NCO, NCC)
+            aircraft: Type d'avion optionnel
+
+        Returns:
+            True si au moins une operation de la compagnie correspond
+        """
         # Vérifier MSN
         if self.msn_ranges:
             if not any(r.matches(msn) for r in self.msn_ranges):
                 return False
 
-        # Vérifier operation
+        # Vérifier operations - au moins une en commun
         if self.operation_types:
-            if operation.upper() not in [o.upper() for o in self.operation_types]:
-                return False
+            company_ops = [o.upper() for o in operations]
+            item_ops = [o.upper() for o in self.operation_types]
+            if not any(op in company_ops for op in item_ops):
+                return False  # Aucune operation en commun
 
         # Vérifier aircraft variant
         if self.aircraft_variants and aircraft:
@@ -273,13 +285,25 @@ class MMELVariantTree:
         if isinstance(op_data, list):
             context.operation_types = [str(o).upper() for o in op_data]
 
-        # Chercher dans les remarks
+        # Chercher dans les remarks et description avec patterns étendus
         remarks = item_data.get("remarks", "") or item_data.get("remarks_raw", "")
-        for pattern, op in [
+        full_text = f"{description} {remarks}"
+
+        # Patterns étendus pour capturer toutes les mentions
+        operation_patterns = [
+            # Avec parenthèses
             (r'\(CAT\)', "CAT"), (r'\(SPO\)', "SPO"),
-            (r'\(NCO\)', "NCO"), (r'\(NCC\)', "NCC")
-        ]:
-            if re.search(pattern, remarks, re.IGNORECASE) or re.search(pattern, description, re.IGNORECASE):
+            (r'\(NCO\)', "NCO"), (r'\(NCC\)', "NCC"),
+            # Sans parenthèses (mots complets)
+            (r'\bCAT\b', "CAT"), (r'\bSPO\b', "SPO"),
+            (r'\bNCO\b', "NCO"), (r'\bNCC\b', "NCC"),
+            # Mots-clés additionnels
+            (r'\bCOMMERCIAL\b', "CAT"), (r'\bPRIVATE\b', "NCC"),
+            (r'\bCARGO\b', "CAT"),
+        ]
+
+        for pattern, op in operation_patterns:
+            if re.search(pattern, full_text, re.IGNORECASE):
                 if op not in context.operation_types:
                     context.operation_types.append(op)
 
@@ -305,14 +329,14 @@ class MMELVariantTree:
         return variants
 
     def find_applicable_variant(self, item_base: str, msn: int,
-                               operation: str, aircraft: str = "") -> Optional[MMELVariant]:
+                               operations: List[str], aircraft: str = "") -> Optional[MMELVariant]:
         """
         Trouve la variante applicable au contexte donné.
 
         Args:
             item_base: Item de base sans suffixe (21-30-01)
             msn: MSN de l'avion
-            operation: Type d'opération (CAT, SPO, etc.)
+            operations: Liste des types d'operations de la compagnie
             aircraft: Variante avion optionnelle
 
         Returns:
@@ -325,7 +349,7 @@ class MMELVariantTree:
 
         for suffix, variants in self.tree[item_base].items():
             for variant in variants:
-                if variant.context.matches(msn, operation, aircraft):
+                if variant.context.matches(msn, operations, aircraft):
                     candidates.append(variant)
 
         if not candidates:
@@ -345,14 +369,14 @@ class MMELVariantTree:
         return candidates[0]
 
     def match_mel_item(self, mel_item: Dict[str, Any], msn: int,
-                      operation: str, aircraft: str = "") -> MatchResult:
+                      operations: List[str], aircraft: str = "") -> MatchResult:
         """
         Matche un item MEL avec la variante MMEL appropriée.
 
         Args:
             mel_item: Item MEL à matcher
             msn: MSN de l'avion
-            operation: Type d'opération
+            operations: Liste des types d'operations de la compagnie
             aircraft: Variante avion
 
         Returns:
@@ -379,7 +403,7 @@ class MMELVariantTree:
         # 1. Essayer match exact sur item_number
         exact_match = self.get_item(mel_item_number)
         if exact_match:
-            if exact_match.context.matches(msn, operation, aircraft):
+            if exact_match.context.matches(msn, operations, aircraft):
                 return MatchResult(
                     mel_item=mel_item,
                     matched_variant=exact_match,
@@ -389,7 +413,7 @@ class MMELVariantTree:
                 )
 
         # 2. Chercher variante applicable par contexte
-        applicable = self.find_applicable_variant(mel_item_base, msn, operation, aircraft)
+        applicable = self.find_applicable_variant(mel_item_base, msn, operations, aircraft)
 
         if applicable:
             # Vérifier si c'est la même variante ou une différente
@@ -410,7 +434,7 @@ class MMELVariantTree:
                 confidence=confidence,
                 score=score,
                 alternatives=alternatives,
-                reason=f"Variante {applicable.item_number} applicable pour MSN {msn}, {operation}"
+                reason=f"Variante {applicable.item_number} applicable pour MSN {msn}, Operations {operations}"
             )
 
         # 3. Match partiel sur item_base (sans contexte)
@@ -471,14 +495,15 @@ class AircraftContext:
     """Contexte complet d'un avion pour la comparaison"""
 
     msn: int
-    operation_type: str  # CAT, SPO, NCO, NCC
+    operation_types: List[str] = field(default_factory=lambda: ["CAT"])  # Liste: CAT, SPO, NCO, NCC
     aircraft_type: str = ""  # A320-214, A320neo
     etops_certified: bool = False
     rvsm_certified: bool = True
     installed_equipment: Dict[str, int] = field(default_factory=dict)
 
     def describe(self) -> str:
-        return f"MSN {self.msn}, {self.operation_type}, {self.aircraft_type}"
+        ops_str = ", ".join(self.operation_types)
+        return f"MSN {self.msn}, Operations: [{ops_str}], {self.aircraft_type}"
 
 
 # === TESTS ===
