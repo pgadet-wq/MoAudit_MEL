@@ -452,17 +452,35 @@ def parse_item_number(raw: str) -> Dict[str, Any]:
 
 
 def extract_conditions_from_remarks(remarks: str) -> List[ApplicabilityCondition]:
-    """Extrait les conditions (a), (b), (c) des remarques"""
+    """
+    Extrait les sous-conditions (a), (b), (c), (d) des remarques.
+
+    Note: (O) et (M) sont des indicateurs de procédure (Operations/Maintenance),
+    PAS des conditions d'applicabilité. Ils sont exclus de l'extraction.
+    """
     conditions = []
+    seen_ids = set()
 
     # Pattern: (a) texte, (b) texte, etc.
-    pattern = r'\(([a-z])\)\s*([^(]+?)(?=\([a-z]\)|$)'
+    # Utilise [a-ln-z] pour exclure 'm' du pattern initial
+    pattern = r'\(([a-ln-z])\)\s*([^(]+?)(?=\([a-z]\)|$)'
     matches = re.findall(pattern, remarks, re.IGNORECASE | re.DOTALL)
 
     for cond_id, text in matches:
+        cond_id_lower = cond_id.lower()
+
+        # Exclure (O) et (M) qui sont des indicateurs de procédure, pas des conditions
+        if cond_id_lower in ('o', 'm'):
+            continue
+
+        # Éviter les doublons
+        if cond_id_lower in seen_ids:
+            continue
+
         text = text.strip().rstrip(',').rstrip(';').strip()
         if text:
-            cond = ApplicabilityCondition(id=cond_id.lower(), text=text)
+            seen_ids.add(cond_id_lower)
+            cond = ApplicabilityCondition(id=cond_id_lower, text=text)
             is_complete, _ = cond.check_completeness()
             cond.is_complete = is_complete
             conditions.append(cond)

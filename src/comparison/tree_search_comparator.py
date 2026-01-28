@@ -599,15 +599,38 @@ class TreeSearchComparator:
         return None
 
     def _extract_conditions(self, remarks: str) -> List[Dict[str, str]]:
-        """Extrait les conditions depuis les remarks"""
+        """
+        Extrait les conditions depuis les remarks.
+
+        Note: (O) et (M) sont des indicateurs de procédure (Operations/Maintenance),
+        PAS des conditions. Les vraies conditions sont (a), (b), (c), (d), etc.
+        """
         conditions = []
-        pattern = r'\(([a-z])\)\s*([^(]+?)(?=\([a-z]\)|$)'
+        seen_ids = set()
+
+        # Pattern pour capturer (lettre) suivi du texte
+        # Exclut O et M qui sont des indicateurs de procédure
+        pattern = r'\(([a-ln-z])\)\s*([^(]+?)(?=\([a-z]\)|$)'
         matches = re.findall(pattern, remarks, re.IGNORECASE | re.DOTALL)
+
         for cid, text in matches:
-            conditions.append({
-                "id": cid.lower(),
-                "text": text.strip().rstrip(',').rstrip(';').strip()
-            })
+            cid_lower = cid.lower()
+            # Double vérification: exclure o et m
+            if cid_lower in ('o', 'm'):
+                continue
+            # Éviter les doublons
+            if cid_lower in seen_ids:
+                continue
+
+            text = text.strip().rstrip(',').rstrip(';').strip()
+            # Ignorer les textes trop courts ou vides
+            if text and len(text) > 3:
+                seen_ids.add(cid_lower)
+                conditions.append({
+                    "id": cid_lower,
+                    "text": text
+                })
+
         return conditions
 
     def run_audit(self, mel_items: List[Dict[str, Any]],
