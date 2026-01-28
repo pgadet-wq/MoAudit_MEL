@@ -15,6 +15,7 @@
       "number_installed": "2",
       "number_required": "1",
       "remarks": "(O) May be inoperative provided: (a) remaining pack operates normally, (b) APU bleed available for ground ops, (c) flight limited to FL310.",
+      "operation_scope": ["CAT", "SPO", "NCO", "NCC"],
       "source_document": "A320_MMEL_Rev42_EASA.pdf",
       "source_page": 20,
       "extraction_confidence": 0.98
@@ -28,6 +29,7 @@
       "number_installed": "1",
       "number_required": "1",
       "remarks": "Go item - must be operative for dispatch.",
+      "operation_scope": ["CAT", "SPO", "NCO", "NCC"],
       "source_document": "A320_MMEL_Rev42_EASA.pdf",
       "source_page": 28,
       "extraction_confidence": 0.99
@@ -41,6 +43,7 @@
       "number_installed": "2",
       "number_required": "1",
       "remarks": "(O)(M) May be inoperative provided: (a) APU generator is operative, (b) ETOPS prohibited.",
+      "operation_scope": ["CAT", "SPO", "NCO", "NCC"],
       "source_document": "A320_MMEL_Rev42_EASA.pdf",
       "source_page": 32,
       "extraction_confidence": 0.97
@@ -53,7 +56,8 @@
       "repair_interval": "3 days",
       "number_installed": "1",
       "number_required": "0",
-      "remarks": "(O)(M) May be inoperative provided: (a) trim set to neutral, (b) manual reversion verified.",
+      "remarks": "(O)(M) May be inoperative provided: (a) trim set to neutral, (b) manual reversion verified. CAT operations only.",
+      "operation_scope": ["CAT"],
       "source_document": "A320_MMEL_Rev42_EASA.pdf",
       "source_page": 40,
       "extraction_confidence": 0.96
@@ -67,6 +71,7 @@
       "number_installed": "3",
       "number_required": "2",
       "remarks": "(O) One may be inoperative provided associated system quantity indicator operative.",
+      "operation_scope": ["CAT", "SPO", "NCO", "NCC"],
       "source_document": "A320_MMEL_Rev42_EASA.pdf",
       "source_page": 48,
       "extraction_confidence": 0.95
@@ -79,7 +84,8 @@
       "repair_interval": "3 days",
       "number_installed": "1",
       "number_required": "0",
-      "remarks": "(M)(O) May be inoperative provided: (a) runway not contaminated, (b) pushback used, (c) differential thrust available.",
+      "remarks": "(M)(O) May be inoperative provided: (a) runway not contaminated, (b) pushback used, (c) differential thrust available. SPO/NCO operations.",
+      "operation_scope": ["SPO", "NCO"],
       "source_document": "A320_MMEL_Rev42_EASA.pdf",
       "source_page": 58,
       "extraction_confidence": 0.97
@@ -93,6 +99,7 @@
       "number_installed": "2",
       "number_required": "1",
       "remarks": "(O) One may be inoperative provided: (a) RNAV ops prohibited, (b) manual navigation available.",
+      "operation_scope": ["CAT", "SPO", "NCO", "NCC"],
       "source_document": "A320_MMEL_Rev42_EASA.pdf",
       "source_page": 75,
       "extraction_confidence": 0.96
@@ -106,6 +113,7 @@
       "number_installed": "1",
       "number_required": "0",
       "remarks": "(O)(M) May be inoperative for day VFR only. Night/IFR: Required operative.",
+      "operation_scope": ["CAT", "SPO", "NCO", "NCC"],
       "source_document": "A320_MMEL_Rev42_EASA.pdf",
       "source_page": 78,
       "extraction_confidence": 0.98
@@ -119,6 +127,7 @@
       "number_installed": "2",
       "number_required": "1",
       "remarks": "(O) One may be inoperative provided CAT II/III ops not conducted.",
+      "operation_scope": ["CAT", "SPO", "NCO", "NCC"],
       "source_document": "A320_MMEL_Rev42_EASA.pdf",
       "source_page": 82,
       "extraction_confidence": 0.97
@@ -132,6 +141,7 @@
       "number_installed": "1",
       "number_required": "0",
       "remarks": "(O)(M) May be inoperative provided: (a) external power available, (b) main generators operative. ETOPS: Required.",
+      "operation_scope": ["CAT", "SPO", "NCO", "NCC"],
       "source_document": "A320_MMEL_Rev42_EASA.pdf",
       "source_page": 95,
       "extraction_confidence": 0.98
@@ -145,6 +155,7 @@
       "number_installed": "4",
       "number_required": "4",
       "remarks": "All doors must be operative for dispatch.",
+      "operation_scope": ["CAT", "SPO", "NCO", "NCC"],
       "source_document": "A320_MMEL_Rev42_EASA.pdf",
       "source_page": 100,
       "extraction_confidence": 0.99
@@ -157,7 +168,8 @@
       "repair_interval": "3 days",
       "number_installed": "2",
       "number_required": "2",
-      "remarks": "(M) Both primary systems required. Secondary may substitute per AFM.",
+      "remarks": "(M) Both primary systems required. Secondary may substitute per AFM. NCC operations only.",
+      "operation_scope": ["NCC"],
       "source_document": "A320_MMEL_Rev42_EASA.pdf",
       "source_page": 115,
       "extraction_confidence": 0.96

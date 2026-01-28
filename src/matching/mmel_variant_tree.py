@@ -273,13 +273,25 @@ class MMELVariantTree:
         if isinstance(op_data, list):
             context.operation_types = [str(o).upper() for o in op_data]
 
-        # Chercher dans les remarks
+        # Chercher dans les remarks et description avec patterns étendus
         remarks = item_data.get("remarks", "") or item_data.get("remarks_raw", "")
-        for pattern, op in [
+        full_text = f"{description} {remarks}"
+
+        # Patterns étendus pour capturer toutes les mentions
+        operation_patterns = [
+            # Avec parenthèses
             (r'\(CAT\)', "CAT"), (r'\(SPO\)', "SPO"),
-            (r'\(NCO\)', "NCO"), (r'\(NCC\)', "NCC")
-        ]:
-            if re.search(pattern, remarks, re.IGNORECASE) or re.search(pattern, description, re.IGNORECASE):
+            (r'\(NCO\)', "NCO"), (r'\(NCC\)', "NCC"),
+            # Sans parenthèses (mots complets)
+            (r'\bCAT\b', "CAT"), (r'\bSPO\b', "SPO"),
+            (r'\bNCO\b', "NCO"), (r'\bNCC\b', "NCC"),
+            # Mots-clés additionnels
+            (r'\bCOMMERCIAL\b', "CAT"), (r'\bPRIVATE\b', "NCC"),
+            (r'\bCARGO\b', "CAT"),
+        ]
+
+        for pattern, op in operation_patterns:
+            if re.search(pattern, full_text, re.IGNORECASE):
                 if op not in context.operation_types:
                     context.operation_types.append(op)
 

@@ -74,16 +74,36 @@ def parse_ata_number(raw: str) -> dict:
 
 
 def extract_operation_types(text: str) -> List[str]:
-    """Extrait les types d'exploitation: (CAT), (SPO), (NCO), etc."""
-    patterns = [
-        r'\(CAT\)', r'\(SPO\)', r'\(NCO\)', r'\(NCC\)',
-        r'\(COMMERCIAL\)', r'\(PRIVATE\)', r'\(CARGO\)'
-    ]
+    """
+    Extrait les types d'exploitation du texte.
+
+    Patterns reconnus:
+    - Avec parenthèses: (CAT), (SPO), (NCO), (NCC)
+    - Sans parenthèses: CAT operations, SPO/NCO, etc.
+    - Mots-clés: COMMERCIAL, PRIVATE, CARGO
+    """
+    patterns = {
+        # Avec parenthèses
+        r'\(CAT\)': "CAT",
+        r'\(SPO\)': "SPO",
+        r'\(NCO\)': "NCO",
+        r'\(NCC\)': "NCC",
+        r'\(ALL\)': "ALL",
+        # Sans parenthèses (mots complets)
+        r'\bCAT\b': "CAT",
+        r'\bSPO\b': "SPO",
+        r'\bNCO\b': "NCO",
+        r'\bNCC\b': "NCC",
+        # Mots-clés additionnels
+        r'\bCOMMERCIAL\b': "CAT",
+        r'\bPRIVATE\b': "NCC",
+        r'\bCARGO\b': "CAT",
+    }
     found = []
-    for p in patterns:
-        if re.search(p, text, re.IGNORECASE):
-            op_type = re.search(p, text, re.IGNORECASE).group()
-            found.append(op_type.strip('()').upper())
+    for pattern, op_type in patterns.items():
+        if re.search(pattern, text, re.IGNORECASE):
+            if op_type not in found:
+                found.append(op_type)
     return found
 
 
