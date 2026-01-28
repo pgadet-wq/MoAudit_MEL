@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MoAudit MEL - Audit MEL/MMEL</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #e0f2fe 100%);
+            min-height: 100vh;
+            color: #1e293b;
+        }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+        header {
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1rem 1.5rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header-left { display: flex; align-items: center; gap: 1rem; }
+        .logo {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+        .header-title h1 { font-size: 1.25rem; font-weight: 700; }
+        .header-title p { font-size: 0.875rem; color: #64748b; }
+
+        main {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        .card {
+            background: white;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border: 1px solid #e2e8f0;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .card h2 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Upload zones */
+        .upload-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+        @media (max-width: 768px) { .upload-grid { grid-template-columns: 1fr; } }
+
+        .upload-zone {
+            border: 2px dashed #cbd5e1;
+            border-radius: 0.75rem;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f8fafc;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+        .upload-zone.mel-zone:hover, .upload-zone.mel-zone.dragover { border-color: #3b82f6; }
+        .upload-zone.mmel-zone:hover, .upload-zone.mmel-zone.dragover { border-color: #22c55e; }
+        .upload-zone input { display: none; }
+        .upload-zone .icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        .upload-zone .title { font-weight: 600; margin-bottom: 0.25rem; }
+        .upload-zone .subtitle { font-size: 0.875rem; color: #64748b; }
+        .upload-zone .file-name {
+            margin-top: 0.75rem;
+            padding: 0.5rem 1rem;
+            background: #dbeafe;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            color: #1d4ed8;
+            display: none;
+        }
+        .upload-zone.has-file .file-name { display: inline-block; }
+        .upload-zone.mmel-zone .file-name { background: #dcfce7; color: #15803d; }
+
+        /* Config */
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        .config-item label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #475569;
+            margin-bottom: 0.5rem;
+        }
+        .config-item input, .config-item select {
+            width: 100%;
+            padding: 0.625rem 0.75rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
+            transition: border-color 0.2s;
+        }
+        .config-item input:focus, .config-item select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            color: white;
+        }
+        .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,0.4); }
+        .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; }
+        .btn-secondary {
+            background: #f1f5f9;
+            color: #475569;
+        }
+        .btn-secondary:hover { background: #e2e8f0; }
+
+        /* Status */
+        .status {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-top: 1rem;
+            display: none;
+        }
+        .status.show { display: block; }
+        .status.loading { background: #fef3c7; color: #92400e; }
+        .status.success { background: #dcfce7; color: #166534; }
+        .status.error { background: #fee2e2; color: #991b1b; }
+        .status .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.75s linear infinite;
+            margin-right: 0.5rem;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Progress */
+        .progress-bar {
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 0.5rem;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3b82f6, #22c55e);
+            transition: width 0.3s;
+        }
+
+        /* Results */
+        #resultsSection { display: none; }
+        #resultsSection.show { display: block; }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        @media (max-width: 1200px) { .summary-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (max-width: 768px) { .summary-grid { grid-template-columns: repeat(2, 1fr); } }
+
+        .summary-card {
+            background: white;
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            border: 1px solid #e2e8f0;
+            text-align: center;
+        }
+        .summary-card .value { font-size: 2rem; font-weight: 700; }
+        .summary-card .label { font-size: 0.875rem; color: #64748b; margin-top: 0.25rem; }
+        .summary-card.compliant .value { color: #22c55e; }
+        .summary-card.critical .value { color: #ef4444; }
+        .summary-card.warning .value { color: #f59e0b; }
+        .summary-card.info .value { color: #3b82f6; }
+
+        /* Compliance gauge */
+        .compliance-gauge {
+            width: 150px;
+            height: 150px;
+            margin: 0 auto 1rem;
+            position: relative;
+        }
+        .compliance-gauge svg { transform: rotate(-90deg); }
+        .compliance-gauge circle {
+            fill: none;
+            stroke-width: 12;
+        }
+        .compliance-gauge .bg { stroke: #e2e8f0; }
+        .compliance-gauge .fill {
+            stroke: #22c55e;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 1s ease-out;
+        }
+        .compliance-gauge .value {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        /* Findings table */
+        .findings-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+        .findings-table th {
+            background: #f8fafc;
+            padding: 0.75rem 1rem;
+            text-align: left;
+            font-weight: 600;
+            color: #475569;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        .findings-table td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #e2e8f0;
+            vertical-align: top;
+        }
+        .findings-table tr:hover { background: #f8fafc; }
+
+        .verdict-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .verdict-badge.compliant { background: #dcfce7; color: #166534; }
+        .verdict-badge.more_restrictive { background: #dbeafe; color: #1e40af; }
+        .verdict-badge.less_restrictive { background: #fee2e2; color: #991b1b; }
+        .verdict-badge.missing { background: #fef3c7; color: #92400e; }
+
+        .severity-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+        .severity-dot.critical { background: #ef4444; }
+        .severity-dot.high { background: #f97316; }
+        .severity-dot.medium { background: #f59e0b; }
+        .severity-dot.warning { background: #eab308; }
+        .severity-dot.info { background: #22c55e; }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #e2e8f0;
+            margin-bottom: 1.5rem;
+        }
+        .tab {
+            padding: 0.75rem 1.5rem;
+            font-weight: 500;
+            color: #64748b;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+        }
+        .tab:hover { color: #1e293b; }
+        .tab.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Scrollable table container */
+        .table-container {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+        }
+        .table-container thead th {
+            position: sticky;
+            top: 0;
+            background: #f8fafc;
+            z-index: 10;
+        }
+
+        /* Filter */
+        .filter-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        .filter-bar select, .filter-bar input {
+            padding: 0.5rem 0.75rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        /* Export buttons */
+        .export-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        .export-buttons .btn {
+            padding: 0.5rem 1rem;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="header-left">
+                <div class="logo">MoAudit</div>
+                <div class="header-title">
+                    <h1>Audit MEL/MMEL</h1>
+                    <p>Comparaison automatisee des documents</p>
+                </div>
+            </div>
+            <div>
+                <span class="font-mono" style="font-size: 0.875rem; color: #64748b;">v2.0</span>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- Upload Section -->
+        <div class="card" id="uploadSection">
+            <h2>1. Selectionner les documents</h2>
+            <div class="upload-grid">
+                <div class="upload-zone mel-zone" id="melZone">
+                    <input type="file" id="melInput" accept=".pdf,.json">
+                    <div class="icon">MEL</div>
+                    <div class="title">Document MEL</div>
+                    <div class="subtitle">PDF ou JSON - Document operateur a auditer</div>
+                    <div class="file-name" id="melFileName"></div>
+                </div>
+                <div class="upload-zone mmel-zone" id="mmelZone">
+                    <input type="file" id="mmelInput" accept=".pdf,.json">
+                    <div class="icon">MMEL</div>
+                    <div class="title">Document MMEL</div>
+                    <div class="subtitle">PDF ou JSON - Reference reglementaire</div>
+                    <div class="file-name" id="mmelFileName"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Config Section -->
+        <div class="card">
+            <h2>2. Configuration du contexte</h2>
+            <div class="config-grid">
+                <div class="config-item">
+                    <label for="msn">MSN (Serial Number)</label>
+                    <input type="number" id="msn" value="1280" placeholder="ex: 1280">
+                </div>
+                <div class="config-item" style="grid-column: span 2;">
+                    <label>Types d'operations de la compagnie (cochez tous ceux applicables)</label>
+                    <div class="checkbox-group" style="display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 0.5rem;">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" name="operations" value="CAT" checked style="width: 18px; height: 18px;">
+                            <span>CAT - Transport Aerien Commercial</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" name="operations" value="SPO" style="width: 18px; height: 18px;">
+                            <span>SPO - Operations Specialisees</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" name="operations" value="NCO" style="width: 18px; height: 18px;">
+                            <span>NCO - Non-Commercial Operations</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" name="operations" value="NCC" style="width: 18px; height: 18px;">
+                            <span>NCC - Non-Commercial Complex</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="config-item">
+                    <label for="aircraftType">Type d'avion</label>
+                    <input type="text" id="aircraftType" placeholder="ex: PC-12">
+                </div>
+                <div class="config-item">
+                    <label for="etops">ETOPS</label>
+                    <select id="etops">
+                        <option value="false">Non certifie</option>
+                        <option value="true">Certifie ETOPS</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <button class="btn btn-primary" id="startAuditBtn" disabled>
+                    Lancer l'audit
+                </button>
+                <button class="btn btn-secondary" onclick="loadSampleData()">
+                    Charger donnees exemple
+                </button>
+            </div>
+
+            <div class="status" id="status">
+                <span class="spinner"></span>
+                <span class="message"></span>
+                <div class="progress-bar"><div class="fill" style="width: 0%"></div></div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsSection">
+            <div class="card">
+                <h2>Resultats de l'audit</h2>
+                <div style="display: flex; gap: 2rem; align-items: flex-start; flex-wrap: wrap;">
+                    <div class="compliance-gauge">
+                        <svg width="150" height="150" viewBox="0 0 150 150">
+                            <circle class="bg" cx="75" cy="75" r="60"></circle>
+                            <circle class="fill" cx="75" cy="75" r="60"
+                                stroke-dasharray="377" stroke-dashoffset="377" id="gaugeCircle"></circle>
+                        </svg>
+                        <div class="value" id="complianceValue">--%</div>
+                    </div>
+                    <div class="summary-grid" style="flex: 1;">
+                        <div class="summary-card">
+                            <div class="value" id="totalCount">0</div>
+                            <div class="label">Total</div>
+                        </div>
+                        <div class="summary-card compliant">
+                            <div class="value" id="compliantCount">0</div>
+                            <div class="label">Conformes</div>
+                        </div>
+                        <div class="summary-card info">
+                            <div class="value" id="moreRestrictiveCount">0</div>
+                            <div class="label">Plus restrictifs</div>
+                        </div>
+                        <div class="summary-card critical">
+                            <div class="value" id="lessRestrictiveCount">0</div>
+                            <div class="label">Moins restrictifs</div>
+                        </div>
+                        <div class="summary-card warning">
+                            <div class="value" id="missingCount">0</div>
+                            <div class="label">Manquants</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="tabs">
+                    <div class="tab active" data-tab="critical">Critiques (<span id="criticalTabCount">0</span>)</div>
+                    <div class="tab" data-tab="all">Tous les items</div>
+                    <div class="tab" data-tab="hitl">HITL a revoir (<span id="hitlTabCount">0</span>)</div>
+                </div>
+
+                <div class="filter-bar">
+                    <select id="filterVerdict">
+                        <option value="">Tous les verdicts</option>
+                        <option value="COMPLIANT">Conformes</option>
+                        <option value="MORE_RESTRICTIVE">Plus restrictifs</option>
+                        <option value="LESS_RESTRICTIVE">Moins restrictifs</option>
+                        <option value="MISSING_IN_MEL">Manquants MEL</option>
+                        <option value="MISSING_IN_MMEL">Manquants MMEL</option>
+                    </select>
+                    <select id="filterSeverity">
+                        <option value="">Toutes severites</option>
+                        <option value="critical">Critique</option>
+                        <option value="high">Haute</option>
+                        <option value="medium">Moyenne</option>
+                        <option value="warning">Avertissement</option>
+                        <option value="info">Info</option>
+                    </select>
+                    <input type="text" id="filterSearch" placeholder="Rechercher item...">
+                </div>
+
+                <div class="tab-content active" id="tab-critical">
+                    <div class="table-container">
+                        <table class="findings-table" id="criticalTable">
+                            <thead>
+                                <tr>
+                                    <th>Item MEL</th>
+                                    <th>Item MMEL</th>
+                                    <th>Verdict</th>
+                                    <th>Severite</th>
+                                    <th>Raisons</th>
+                                    <th>SLA</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-all">
+                    <div class="table-container">
+                        <table class="findings-table" id="allTable">
+                            <thead>
+                                <tr>
+                                    <th>Item MEL</th>
+                                    <th>Item MMEL</th>
+                                    <th>Verdict</th>
+                                    <th>Confiance</th>
+                                    <th>Score</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-hitl">
+                    <div class="table-container">
+                        <table class="findings-table" id="hitlTable">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th>Verdict</th>
+                                    <th>Severite</th>
+                                    <th>Raisons</th>
+                                    <th>SLA</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="export-buttons">
+                    <button class="btn btn-secondary" onclick="exportJSON()">Exporter JSON</button>
+                    <button class="btn btn-secondary" onclick="exportCSV()">Exporter CSV</button>
+                    <button class="btn btn-secondary" onclick="exportPDF()">Generer rapport PDF</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // State
+        let melFile = null;
+        let mmelFile = null;
+        let auditResult = null;
+        const API_BASE = window.location.origin;
+
+        // DOM Elements
+        const melZone = document.getElementById('melZone');
+        const mmelZone = document.getElementById('mmelZone');
+        const melInput = document.getElementById('melInput');
+        const mmelInput = document.getElementById('mmelInput');
+        const startBtn = document.getElementById('startAuditBtn');
+        const statusDiv = document.getElementById('status');
+        const resultsSection = document.getElementById('resultsSection');
+
+        // File upload handlers
+        function setupDropZone(zone, input, type) {
+            zone.addEventListener('click', () => input.click());
+            zone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                zone.classList.add('dragover');
+            });
+            zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+            zone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                zone.classList.remove('dragover');
+                handleFile(e.dataTransfer.files[0], type);
+            });
+            input.addEventListener('change', (e) => handleFile(e.target.files[0], type));
+        }
+
+        function handleFile(file, type) {
+            if (!file) return;
+            const validTypes = ['application/pdf', 'application/json'];
+            if (!validTypes.includes(file.type) && !file.name.endsWith('.json')) {
+                alert('Format non supporte. Utilisez PDF ou JSON.');
+                return;
+            }
+
+            if (type === 'mel') {
+                melFile = file;
+                document.getElementById('melFileName').textContent = file.name;
+                melZone.classList.add('has-file');
+            } else {
+                mmelFile = file;
+                document.getElementById('mmelFileName').textContent = file.name;
+                mmelZone.classList.add('has-file');
+            }
+
+            updateStartButton();
+        }
+
+        function updateStartButton() {
+            startBtn.disabled = !(melFile && mmelFile);
+        }
+
+        setupDropZone(melZone, melInput, 'mel');
+        setupDropZone(mmelZone, mmelInput, 'mmel');
+
+        // Start audit
+        startBtn.addEventListener('click', startAudit);
+
+        async function startAudit() {
+            // Collecter les operations selectionnees (multi-selection)
+            const operations = Array.from(document.querySelectorAll('input[name="operations"]:checked'))
+                .map(cb => cb.value);
+
+            if (operations.length === 0) {
+                alert('Veuillez selectionner au moins un type d\'operation.');
+                return;
+            }
+
+            const config = {
+                msn: parseInt(document.getElementById('msn').value) || 0,
+                operations: operations,  // Liste au lieu d'une seule valeur
+                aircraftType: document.getElementById('aircraftType').value,
+                etops: document.getElementById('etops').value === 'true'
+            };
+
+            showStatus('loading', 'Upload des fichiers...', 10);
+            startBtn.disabled = true;
+
+            try {
+                // Upload MEL
+                const melFormData = new FormData();
+                melFormData.append('file', melFile);
+                const melResp = await fetch(`${API_BASE}/api/v2/upload/mel`, {
+                    method: 'POST',
+                    body: melFormData
+                });
+                if (!melResp.ok) throw new Error('Erreur upload MEL');
+                const melData = await melResp.json();
+                showStatus('loading', 'MEL uploade. Upload MMEL...', 25);
+
+                // Upload MMEL
+                const mmelFormData = new FormData();
+                mmelFormData.append('file', mmelFile);
+                const mmelResp = await fetch(`${API_BASE}/api/v2/upload/mmel`, {
+                    method: 'POST',
+                    body: mmelFormData
+                });
+                if (!mmelResp.ok) throw new Error('Erreur upload MMEL');
+                const mmelData = await mmelResp.json();
+                showStatus('loading', 'MMEL uploade. Lancement audit...', 40);
+
+                // Start audit
+                const auditResp = await fetch(`${API_BASE}/api/v2/audit/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mel_path: melData.path,
+                        mmel_path: mmelData.path,
+                        mel_is_json: melFile.name.endsWith('.json'),
+                        mmel_is_json: mmelFile.name.endsWith('.json'),
+                        msn: config.msn,
+                        operations: config.operations,  // Liste d'operations
+                        aircraft_type: config.aircraftType,
+                        etops: config.etops
+                    })
+                });
+                if (!auditResp.ok) throw new Error('Erreur lancement audit');
+                const auditData = await auditResp.json();
+
+                // Poll for results
+                await pollAuditStatus(auditData.job_id);
+
+            } catch (error) {
+                showStatus('error', `Erreur: ${error.message}`);
+                startBtn.disabled = false;
+            }
+        }
+
+        async function pollAuditStatus(jobId) {
+            const pollInterval = 2000;
+            let progress = 40;
+
+            while (true) {
+                try {
+                    const resp = await fetch(`${API_BASE}/api/v2/audit/status/${jobId}`);
+                    const data = await resp.json();
+
+                    if (data.status === 'completed') {
+                        showStatus('success', 'Audit termine !', 100);
+                        auditResult = data.result;
+                        displayResults(auditResult);
+                        break;
+                    } else if (data.status === 'failed') {
+                        throw new Error(data.message || 'Audit echoue');
+                    } else {
+                        progress = Math.min(95, progress + 5);
+                        showStatus('loading', data.message || 'Audit en cours...', progress);
+                    }
+                } catch (error) {
+                    showStatus('error', `Erreur: ${error.message}`);
+                    break;
+                }
+
+                await new Promise(resolve => setTimeout(resolve, pollInterval));
+            }
+
+            startBtn.disabled = false;
+        }
+
+        function showStatus(type, message, progress = null) {
+            statusDiv.className = `status show ${type}`;
+            statusDiv.querySelector('.message').textContent = message;
+            if (progress !== null) {
+                statusDiv.querySelector('.progress-bar .fill').style.width = `${progress}%`;
+            }
+        }
+
+        // Display results
+        function displayResults(result) {
+            resultsSection.classList.add('show');
+
+            const summary = result.summary || {};
+            const comparisons = result.comparisons || [];
+
+            // Update summary cards
+            document.getElementById('totalCount').textContent = summary.total_items_compared || 0;
+            document.getElementById('compliantCount').textContent = summary.compliant || 0;
+            document.getElementById('moreRestrictiveCount').textContent = summary.more_restrictive || 0;
+            document.getElementById('lessRestrictiveCount').textContent = summary.less_restrictive_critical || 0;
+            document.getElementById('missingCount').textContent = summary.missing_items || 0;
+
+            // Update compliance gauge
+            const rate = summary.compliance_rate || 0;
+            document.getElementById('complianceValue').textContent = `${rate}%`;
+            const circumference = 2 * Math.PI * 60;
+            const offset = circumference - (rate / 100) * circumference;
+            document.getElementById('gaugeCircle').style.strokeDashoffset = offset;
+
+            // Color gauge based on rate
+            const gaugeColor = rate >= 80 ? '#22c55e' : rate >= 60 ? '#f59e0b' : '#ef4444';
+            document.getElementById('gaugeCircle').style.stroke = gaugeColor;
+
+            // Update tab counts
+            const criticalItems = comparisons.filter(c => c.severity === 'critical');
+            const hitlItems = comparisons.filter(c => c.requires_hitl);
+            document.getElementById('criticalTabCount').textContent = criticalItems.length;
+            document.getElementById('hitlTabCount').textContent = hitlItems.length;
+
+            // Populate tables
+            populateCriticalTable(criticalItems);
+            populateAllTable(comparisons);
+            populateHitlTable(hitlItems);
+
+            // Scroll to results
+            resultsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function populateCriticalTable(items) {
+            const tbody = document.querySelector('#criticalTable tbody');
+            tbody.innerHTML = items.map(item => `
+                <tr>
+                    <td class="font-mono">${item.mel_item_id || '-'}</td>
+                    <td class="font-mono">${item.mmel_item_id || '-'}</td>
+                    <td><span class="verdict-badge ${item.verdict?.toLowerCase()}">${item.verdict}</span></td>
+                    <td><span class="severity-dot ${item.severity}"></span>${item.severity}</td>
+                    <td>${(item.hitl_reasons || []).join('<br>')}</td>
+                    <td>${item.sla_hours ? item.sla_hours + 'h' : '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function populateAllTable(items) {
+            const tbody = document.querySelector('#allTable tbody');
+            tbody.innerHTML = items.map(item => `
+                <tr>
+                    <td class="font-mono">${item.mel_item_id || '-'}</td>
+                    <td class="font-mono">${item.mmel_item_id || '-'}</td>
+                    <td><span class="verdict-badge ${item.verdict?.toLowerCase()}">${item.verdict}</span></td>
+                    <td>${item.match_confidence || '-'}</td>
+                    <td>${item.compliance_score !== undefined ? (item.compliance_score * 100).toFixed(0) + '%' : '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function populateHitlTable(items) {
+            const tbody = document.querySelector('#hitlTable tbody');
+            tbody.innerHTML = items.map(item => `
+                <tr>
+                    <td class="font-mono">${item.mel_item_id || item.mmel_item_id || '-'}</td>
+                    <td><span class="verdict-badge ${item.verdict?.toLowerCase()}">${item.verdict}</span></td>
+                    <td><span class="severity-dot ${item.severity}"></span>${item.severity}</td>
+                    <td>${(item.hitl_reasons || []).join('<br>')}</td>
+                    <td>${item.sla_hours ? item.sla_hours + 'h' : '-'}</td>
+                    <td>
+                        <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                            onclick="validateItem('${item.mel_item_id}')">Valider</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // Tabs
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+            });
+        });
+
+        // Filters
+        document.getElementById('filterVerdict').addEventListener('change', applyFilters);
+        document.getElementById('filterSeverity').addEventListener('change', applyFilters);
+        document.getElementById('filterSearch').addEventListener('input', applyFilters);
+
+        function applyFilters() {
+            if (!auditResult) return;
+
+            const verdict = document.getElementById('filterVerdict').value;
+            const severity = document.getElementById('filterSeverity').value;
+            const search = document.getElementById('filterSearch').value.toLowerCase();
+
+            let filtered = auditResult.comparisons || [];
+
+            if (verdict) filtered = filtered.filter(c => c.verdict === verdict);
+            if (severity) filtered = filtered.filter(c => c.severity === severity);
+            if (search) filtered = filtered.filter(c =>
+                (c.mel_item_id || '').toLowerCase().includes(search) ||
+                (c.mmel_item_id || '').toLowerCase().includes(search)
+            );
+
+            populateAllTable(filtered);
+        }
+
+        // Export functions
+        function exportJSON() {
+            if (!auditResult) return;
+            const blob = new Blob([JSON.stringify(auditResult, null, 2)], { type: 'application/json' });
+            downloadBlob(blob, `audit_result_${Date.now()}.json`);
+        }
+
+        function exportCSV() {
+            if (!auditResult) return;
+            const comparisons = auditResult.comparisons || [];
+            const headers = ['MEL Item', 'MMEL Item', 'Verdict', 'Severity', 'Compliance Score', 'HITL Required'];
+            const rows = comparisons.map(c => [
+                c.mel_item_id || '',
+                c.mmel_item_id || '',
+                c.verdict || '',
+                c.severity || '',
+                c.compliance_score || '',
+                c.requires_hitl ? 'Yes' : 'No'
+            ]);
+
+            const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv' });
+            downloadBlob(blob, `audit_result_${Date.now()}.csv`);
+        }
+
+        function exportPDF() {
+            alert('Export PDF en cours de developpement');
+        }
+
+        function downloadBlob(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // HITL validation
+        function validateItem(itemId) {
+            alert(`Validation de l'item ${itemId} - Fonctionnalite en developpement`);
+        }
+
+        // Load sample data (for testing)
+        function loadSampleData() {
+            // Simulate loading sample files
+            fetch(`${API_BASE}/api/v2/audit/demo`)
+                .then(r => r.json())
+                .then(data => {
+                    auditResult = data;
+                    displayResults(data);
+                    showStatus('success', 'Donnees exemple chargees');
+                })
+                .catch(e => {
+                    showStatus('error', 'Erreur chargement donnees exemple');
+                });
+        }
+    </script>
+</body>
+</html>

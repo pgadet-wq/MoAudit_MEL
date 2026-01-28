@@ -160,6 +160,7 @@ class AuditResultV2:
     less_restrictive_count: int = 0
     variant_issues_count: int = 0
     missing_count: int = 0
+    not_applicable_count: int = 0  # Items MMEL non applicables aux operations de la compagnie
 
     # Par sévérité
     critical_count: int = 0
@@ -192,6 +193,8 @@ class AuditResultV2:
                 self.missing_count += 1
             elif comp.verdict == Verdict.VARIANT_MISMATCH:
                 self.variant_issues_count += 1
+            elif comp.verdict == Verdict.CONTEXT_MISMATCH:
+                self.not_applicable_count += 1  # Items non applicables (operations differentes)
 
             # Sévérité
             if comp.severity == Severity.CRITICAL:
@@ -208,11 +211,12 @@ class AuditResultV2:
             if comp.requires_hitl:
                 self.hitl_required_count += 1
 
-        # Taux de conformité
-        if self.total_comparisons > 0:
+        # Taux de conformité (exclut les items non applicables)
+        applicable_items = self.total_comparisons - self.not_applicable_count
+        if applicable_items > 0:
             conforming = self.compliant_count + self.more_restrictive_count
             self.overall_compliance_rate = round(
-                conforming / self.total_comparisons * 100, 2
+                conforming / applicable_items * 100, 2
             )
 
 
@@ -431,7 +435,7 @@ class TreeSearchComparator:
             match_result = self.mmel_tree.match_mel_item(
                 mel_item,
                 msn=aircraft_context.msn,
-                operation=aircraft_context.operation_type,
+                operations=aircraft_context.operation_types,  # Liste d'operations
                 aircraft=aircraft_context.aircraft_type
             )
             mmel_variant = match_result.matched_variant
@@ -449,7 +453,7 @@ class TreeSearchComparator:
                 mmel_item_id=None,
                 mel_item_base=mel_item_base,
                 mmel_variant_suffix="",
-                aircraft_context={"msn": aircraft_context.msn, "operation": aircraft_context.operation_type},
+                aircraft_context={"msn": aircraft_context.msn, "operations": aircraft_context.operation_types},
                 match_confidence=match_confidence,
                 verdict=Verdict.MISSING_IN_MMEL,
                 severity=Severity.INFO,
@@ -561,7 +565,7 @@ class TreeSearchComparator:
             mmel_variant_suffix=mmel_variant.suffix,
             aircraft_context={
                 "msn": aircraft_context.msn,
-                "operation": aircraft_context.operation_type,
+                "operations": aircraft_context.operation_types,  # Liste d'operations
                 "aircraft": aircraft_context.aircraft_type
             },
             match_confidence=match_confidence,
@@ -627,7 +631,7 @@ class TreeSearchComparator:
             mmel_document=mmel_document,
             aircraft_context={
                 "msn": aircraft_context.msn,
-                "operation": aircraft_context.operation_type,
+                "operations": aircraft_context.operation_types,  # Liste d'operations
                 "aircraft": aircraft_context.aircraft_type,
                 "etops": aircraft_context.etops_certified
             },
@@ -652,31 +656,48 @@ class TreeSearchComparator:
             for mmel_item_id in uncovered_mmel:
                 mmel_variant = self.mmel_tree.get_item(mmel_item_id)
                 if mmel_variant:
-                    # Vérifier si applicable au contexte
-                    if mmel_variant.context.matches(
+                    # Vérifier applicabilité aux operations de la compagnie
+                    is_applicable = mmel_variant.context.matches(
                         aircraft_context.msn,
-                        aircraft_context.operation_type,
+                        aircraft_context.operation_types,  # Liste d'operations
                         aircraft_context.aircraft_type
-                    ):
-                        result.comparisons.append(ComparisonResultV2(
-                            mel_item_id="",
-                            mmel_item_id=mmel_item_id,
-                            mel_item_base=mmel_variant.item_base,
-                            mmel_variant_suffix=mmel_variant.suffix,
-                            aircraft_context={
-                                "msn": aircraft_context.msn,
-                                "operation": aircraft_context.operation_type
-                            },
-                            match_confidence="none",
-                            verdict=Verdict.MISSING_IN_MEL,
-                            severity=Severity.WARNING,
-                            compliance_score=0.5,
-                            mmel_data=mmel_variant.item_data,
-                            requires_hitl=True,
-                            hitl_reasons=["Item MMEL applicable non couvert par la MEL"],
-                            sla_hours=self.SLA_HOURS[Severity.WARNING],
-                            compared_at=datetime.now().isoformat()
-                        ))
+                    )
+
+                    if is_applicable:
+                        # Item applicable non couvert → WARNING/CRITIQUE
+                        severity = Severity.WARNING
+                        verdict = Verdict.MISSING_IN_MEL
+                        hitl_reason = "Item MMEL applicable non couvert par la MEL"
+                        compliance_score = 0.5
+                        requires_hitl = True
+                    else:
+                        # Item non applicable → INFO (ignoré)
+                        severity = Severity.INFO
+                        verdict = Verdict.CONTEXT_MISMATCH
+                        item_ops = mmel_variant.context.operation_types
+                        hitl_reason = f"Item MMEL ignoré - concerne {item_ops}, compagnie: {aircraft_context.operation_types}"
+                        compliance_score = 1.0  # Ne compte pas contre la conformité
+                        requires_hitl = False
+
+                    result.comparisons.append(ComparisonResultV2(
+                        mel_item_id="",
+                        mmel_item_id=mmel_item_id,
+                        mel_item_base=mmel_variant.item_base,
+                        mmel_variant_suffix=mmel_variant.suffix,
+                        aircraft_context={
+                            "msn": aircraft_context.msn,
+                            "operations": aircraft_context.operation_types
+                        },
+                        match_confidence="none",
+                        verdict=verdict,
+                        severity=severity,
+                        compliance_score=compliance_score,
+                        mmel_data=mmel_variant.item_data,
+                        requires_hitl=requires_hitl,
+                        hitl_reasons=[hitl_reason],
+                        sla_hours=self.SLA_HOURS.get(severity, 0),
+                        compared_at=datetime.now().isoformat()
+                    ))
 
         # Calculer les statistiques
         result.compute_statistics()
@@ -737,7 +758,7 @@ if __name__ == "__main__":
     # Contexte avion
     aircraft = AircraftContext(
         msn=1280,
-        operation_type="CAT",
+        operation_types=["CAT"],  # Liste d'operations
         aircraft_type="A320-214"
     )
 
