@@ -132,11 +132,31 @@ class AuditResult:
         return result
     
     def get_summary(self) -> Dict[str, Any]:
-        """Retourne un résumé sans les détails"""
+        """Retourne un résumé sans les détails
+
+        Structure alignée avec le dashboard frontend:
+        - Les compteurs sont directement au niveau racine (pas imbriqués dans 'statistics')
+        - compliance_rate est calculé automatiquement
+        """
+        compliance_rate = round(
+            (self.compliant_count + self.more_restrictive_count) / max(self.total_comparisons, 1) * 100, 2
+        )
+
         return {
             "mel_document": self.mel_document,
             "mmel_document": self.mmel_document,
             "audit_timestamp": self.audit_timestamp,
+            # Compteurs directement accessibles (compatibilité dashboard)
+            "total": self.total_comparisons,
+            "compliant": self.compliant_count,
+            "more_restrictive": self.more_restrictive_count,
+            "less_restrictive": self.less_restrictive_count,
+            "missing_in_mel": self.missing_in_mel_count,
+            "missing_in_mmel": self.missing_in_mmel_count,
+            "other_deviations": self.other_deviations_count,
+            "hitl_required": self.hitl_required_count,
+            "compliance_rate": compliance_rate,
+            # Structure imbriquée conservée pour compatibilité arrière
             "statistics": {
                 "total": self.total_comparisons,
                 "compliant": self.compliant_count,
@@ -153,10 +173,7 @@ class AuditResult:
                 "medium": self.medium_count,
                 "warning": self.warning_count,
                 "info": self.info_count
-            },
-            "compliance_rate": round(
-                (self.compliant_count + self.more_restrictive_count) / max(self.total_comparisons, 1) * 100, 2
-            )
+            }
         }
 
 

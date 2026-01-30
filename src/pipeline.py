@@ -199,12 +199,31 @@ class MoAMELPipeline:
             raise
     
     def _generate_final_report(self, audit_result: AuditResult) -> Dict[str, Any]:
-        """Génère le rapport final consolidé"""
+        """Génère le rapport final consolidé
+
+        Structure compatible avec le dashboard frontend:
+        - summary: compteurs directs (total, compliant, etc.)
+        - severity_breakdown: au même niveau que summary
+        - comparisons: liste des items comparés
+        """
+        summary_data = audit_result.get_summary()
+
+        # Extraire severity_breakdown pour le mettre au niveau racine (attendu par le frontend)
+        severity_breakdown = summary_data.pop("severity_breakdown", {
+            "critical": audit_result.critical_count,
+            "high": audit_result.high_count,
+            "medium": audit_result.medium_count,
+            "warning": audit_result.warning_count,
+            "info": audit_result.info_count
+        })
+
         report = {
             "run_id": self.run_id,
             "generated_at": datetime.now().isoformat(),
             "status": "completed",
-            "summary": audit_result.get_summary(),
+            "summary": summary_data,
+            "severity_breakdown": severity_breakdown,
+            "comparisons": [comp.to_dict() for comp in audit_result.comparisons],
             "critical_findings": [],
             "recommendations": [],
             "output_files": {
